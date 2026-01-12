@@ -1,0 +1,53 @@
+theme = noctis-azureus
+font-family = MesloLGS Nerd Font Mono
+font-size = 19
+#background-opacity = 0.9
+
+# Use zsh as the default shell
+shell-integration = "zsh"
+
+# Font setup for icons and readability
+font-family = "MesloLGS NF"
+
+# Best theme ever
+#theme = "catppuccin-macchiato"
+
+# For transparency
+background-opacity = 0.78
+
+# Cursor preferences
+cursor-style = "block"
+cursor-style-blink = true
+shell-integration-features = "no-cursor"
+
+# Window size and padding
+window-width = 115
+window-height = 45
+window-padding-y = 25,1
+window-padding-x = 1,1
+
+# Minimal macOS titlebar for cleaner appearance
+macos-titlebar-style = "hidden"
+macos-titlebar-proxy-icon = "hidden"
+
+# ============ SPLITS ============
+# Create splits (keep defaults)
+# Cmd+D = vertical split, Cmd+Shift+D = horizontal split
+
+# Navigate between splits (Option + hjkl)
+keybind = alt+h=goto_split:left
+keybind = alt+j=goto_split:down
+keybind = alt+k=goto_split:up
+keybind = alt+l=goto_split:right
+
+# Resize splits (Cmd+Shift + arrows) - expand/shrink toward that direction
+keybind = cmd+shift+left=resize_split:left,80
+keybind = cmd+shift+right=resize_split:right,80
+keybind = cmd+shift+up=resize_split:up,80
+keybind = cmd+shift+down=resize_split:down,80
+
+# Equalize all splits
+keybind = cmd+shift+e=equalize_splits
+
+# Fix Shift+Enter for Claude Code newlines
+keybind = shift+enter=text:\x1b\r
