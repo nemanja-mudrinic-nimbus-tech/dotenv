@@ -115,6 +115,7 @@ This will:
 │   ├── zshrc          # Main zsh config
 │   ├── p10k.zsh       # Powerlevel10k theme
 │   └── secrets.example # Template for API keys
+├── tmux.conf          # Tmux config
 ├── setup.sh           # Installation script
 └── README.md
 ```
@@ -127,6 +128,7 @@ This will:
 | `~/.dotfiles/nvim` | `~/.config/nvim` |
 | `~/.dotfiles/zsh/zshrc` | `~/.zshrc` |
 | `~/.dotfiles/zsh/p10k.zsh` | `~/.p10k.zsh` |
+| `~/.dotfiles/tmux.conf` | `~/.tmux.conf` |
 
 ## Optional Tools
 

@@ -217,6 +217,7 @@ create_symlinks() {
     create_symlink "$DOTFILES_DIR/nvim" "$HOME/.config/nvim"
     create_symlink "$DOTFILES_DIR/zsh/zshrc" "$HOME/.zshrc"
     create_symlink "$DOTFILES_DIR/zsh/p10k.zsh" "$HOME/.p10k.zsh"
+    create_symlink "$DOTFILES_DIR/tmux.conf" "$HOME/.tmux.conf"
 }
 
 # ============================================
