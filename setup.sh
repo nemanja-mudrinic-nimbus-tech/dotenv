@@ -155,16 +155,7 @@ setup_fzf() {
 }
 
 # ============================================
-# 6. Initialize submodules (nvim)
-# ============================================
-init_submodules() {
-    info "Initializing git submodules..."
-    cd "$DOTFILES_DIR"
-    git submodule update --init --recursive
-}
-
-# ============================================
-# 7. Create symlinks
+# 6. Create symlinks
 # ============================================
 create_symlink() {
     local src="$1"
@@ -231,7 +222,7 @@ main() {
     if [[ ! -d "$DOTFILES_DIR" ]]; then
         error "Dotfiles directory not found at $DOTFILES_DIR"
         error "Please clone the repo first:"
-        echo "  git clone --recursive <your-repo-url> ~/.dotfiles"
+        echo "  git clone <your-repo-url> ~/.dotfiles"
         exit 1
     fi
 
@@ -240,7 +231,6 @@ main() {
     install_oh_my_zsh
     install_zsh_plugins
     setup_fzf
-    init_submodules
     create_symlinks
     post_install
 
