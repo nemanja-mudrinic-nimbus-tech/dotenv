@@ -52,6 +52,21 @@ nvim
 
 Lazy.nvim will automatically install all plugins on first launch.
 
+## Updating
+
+To update everything (brew packages, plugins, neovim, etc.):
+
+```bash
+~/.dotfiles/setup.sh --update
+```
+
+This will:
+- Pull latest dotfiles from git
+- Update Homebrew and upgrade all packages
+- Update Oh My Zsh and zsh plugins
+- Clear Neovim cache and reinstall plugins
+- Check for version compatibility issues
+
 ## What Gets Installed
 
 ### Homebrew Packages

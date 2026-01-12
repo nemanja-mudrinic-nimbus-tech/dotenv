@@ -2,27 +2,44 @@
 
 # Dotfiles setup script
 # Run this on a fresh Mac to install everything and configure dotfiles
+#
+# Usage:
+#   ./setup.sh           # Fresh install
+#   ./setup.sh --update  # Update existing installation
 
 set -e
 
 DOTFILES_DIR="$HOME/.dotfiles"
+UPDATE_MODE=false
+
+# Parse arguments
+for arg in "$@"; do
+    case $arg in
+        --update|-u)
+            UPDATE_MODE=true
+            shift
+            ;;
+    esac
+done
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
+step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 
 # ============================================
-# 1. Install Homebrew
+# 1. Install/Update Homebrew
 # ============================================
-install_homebrew() {
+setup_homebrew() {
     if ! command -v brew &> /dev/null; then
-        info "Installing Homebrew..."
+        step "Installing Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
         # Add brew to path for this session
@@ -31,14 +48,18 @@ install_homebrew() {
         fi
     else
         info "Homebrew already installed"
+        if [[ "$UPDATE_MODE" == true ]]; then
+            step "Updating Homebrew..."
+            brew update
+        fi
     fi
 }
 
 # ============================================
-# 2. Install Brew packages
+# 2. Install/Upgrade Brew packages
 # ============================================
 install_brew_packages() {
-    info "Installing Homebrew packages..."
+    step "Installing Homebrew packages..."
 
     # Core tools
     BREW_PACKAGES=(
@@ -73,7 +94,12 @@ install_brew_packages() {
 
     for package in "${BREW_PACKAGES[@]}"; do
         if brew list "$package" &> /dev/null; then
-            info "$package already installed"
+            if [[ "$UPDATE_MODE" == true ]]; then
+                info "Upgrading $package..."
+                brew upgrade "$package" 2>/dev/null || info "$package already up to date"
+            else
+                info "$package already installed"
+            fi
         else
             info "Installing $package..."
             brew install "$package" || warn "Failed to install $package"
@@ -87,7 +113,12 @@ install_brew_packages() {
 
     for cask in "${BREW_CASKS[@]}"; do
         if brew list --cask "$cask" &> /dev/null; then
-            info "$cask already installed"
+            if [[ "$UPDATE_MODE" == true ]]; then
+                info "Upgrading $cask..."
+                brew upgrade --cask "$cask" 2>/dev/null || info "$cask already up to date"
+            else
+                info "$cask already installed"
+            fi
         else
             info "Installing $cask..."
             brew install --cask "$cask" 2>/dev/null || info "$cask might be a formula, not a cask"
@@ -100,57 +131,61 @@ install_brew_packages() {
 # ============================================
 install_oh_my_zsh() {
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        info "Installing Oh My Zsh..."
+        step "Installing Oh My Zsh..."
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     else
         info "Oh My Zsh already installed"
+        if [[ "$UPDATE_MODE" == true ]]; then
+            step "Updating Oh My Zsh..."
+            (cd "$HOME/.oh-my-zsh" && git pull --rebase --quiet) || warn "Failed to update Oh My Zsh"
+        fi
     fi
 }
 
 # ============================================
-# 4. Install Zsh plugins (oh-my-zsh custom plugins)
+# 4. Install/Update Zsh plugins
 # ============================================
 install_zsh_plugins() {
     local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
-    # zsh-autosuggestions (oh-my-zsh version)
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]]; then
-        info "Installing zsh-autosuggestions plugin..."
-        git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
-    fi
+    step "Setting up Zsh plugins..."
 
-    # zsh-syntax-highlighting (oh-my-zsh version)
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]]; then
-        info "Installing zsh-syntax-highlighting plugin..."
-        git clone https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
-    fi
+    # Plugin repos to install/update
+    declare -A PLUGINS=(
+        ["zsh-autosuggestions"]="https://github.com/zsh-users/zsh-autosuggestions"
+        ["zsh-syntax-highlighting"]="https://github.com/zsh-users/zsh-syntax-highlighting"
+        ["zsh-history-substring-search"]="https://github.com/zsh-users/zsh-history-substring-search"
+        ["zsh-kubectl-prompt"]="https://github.com/superbrothers/zsh-kubectl-prompt"
+    )
 
-    # zsh-history-substring-search
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-history-substring-search" ]]; then
-        info "Installing zsh-history-substring-search plugin..."
-        git clone https://github.com/zsh-users/zsh-history-substring-search "$ZSH_CUSTOM/plugins/zsh-history-substring-search"
-    fi
+    for plugin in "${!PLUGINS[@]}"; do
+        local plugin_dir="$ZSH_CUSTOM/plugins/$plugin"
+        if [[ ! -d "$plugin_dir" ]]; then
+            info "Installing $plugin..."
+            git clone "${PLUGINS[$plugin]}" "$plugin_dir"
+        elif [[ "$UPDATE_MODE" == true ]]; then
+            info "Updating $plugin..."
+            (cd "$plugin_dir" && git pull --rebase --quiet) || warn "Failed to update $plugin"
+        fi
+    done
 
-    # zsh-kubectl-prompt
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-kubectl-prompt" ]]; then
-        info "Installing zsh-kubectl-prompt plugin..."
-        git clone https://github.com/superbrothers/zsh-kubectl-prompt "$ZSH_CUSTOM/plugins/zsh-kubectl-prompt"
-    fi
-
-    # powerlevel10k theme (oh-my-zsh version)
-    if [[ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]]; then
+    # Powerlevel10k theme
+    local p10k_dir="$ZSH_CUSTOM/themes/powerlevel10k"
+    if [[ ! -d "$p10k_dir" ]]; then
         info "Installing powerlevel10k theme..."
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
+    elif [[ "$UPDATE_MODE" == true ]]; then
+        info "Updating powerlevel10k..."
+        (cd "$p10k_dir" && git pull --rebase --quiet) || warn "Failed to update powerlevel10k"
     fi
 }
 
 # ============================================
-# 5. Setup fzf keybindings
+# 5. Setup fzf
 # ============================================
 setup_fzf() {
     if command -v fzf &> /dev/null; then
-        info "Setting up fzf keybindings..."
-        # fzf installed via brew auto-configures with `fzf --zsh`
+        info "fzf configured (auto-loads via zshrc)"
     fi
 }
 
@@ -162,49 +197,74 @@ create_symlink() {
     local dest="$2"
 
     if [[ -L "$dest" ]]; then
-        info "Symlink already exists: $dest"
+        info "Symlink exists: $dest"
     elif [[ -e "$dest" ]]; then
-        warn "Backing up existing: $dest -> ${dest}.backup"
+        warn "Backing up: $dest -> ${dest}.backup"
         mv "$dest" "${dest}.backup"
         ln -s "$src" "$dest"
-        info "Created symlink: $dest -> $src"
+        info "Created symlink: $dest"
     else
-        # Create parent directory if needed
         mkdir -p "$(dirname "$dest")"
         ln -s "$src" "$dest"
-        info "Created symlink: $dest -> $src"
+        info "Created symlink: $dest"
     fi
 }
 
 create_symlinks() {
-    info "Creating symlinks..."
+    step "Creating symlinks..."
 
-    # Ghostty
     create_symlink "$DOTFILES_DIR/ghostty" "$HOME/.config/ghostty"
-
-    # Neovim
     create_symlink "$DOTFILES_DIR/nvim" "$HOME/.config/nvim"
-
-    # Zsh
     create_symlink "$DOTFILES_DIR/zsh/zshrc" "$HOME/.zshrc"
     create_symlink "$DOTFILES_DIR/zsh/p10k.zsh" "$HOME/.p10k.zsh"
+}
+
+# ============================================
+# 7. Setup Neovim
+# ============================================
+setup_neovim() {
+    step "Setting up Neovim..."
+
+    # Check nvim version
+    if command -v nvim &> /dev/null; then
+        local nvim_version=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        info "Neovim version: $nvim_version"
+
+        # Compare versions (need 0.11.0+)
+        local required="0.11.0"
+        if [[ "$(printf '%s\n' "$required" "$nvim_version" | sort -V | head -n1)" != "$required" ]]; then
+            warn "Neovim $nvim_version is older than $required"
+            warn "Some plugins may not work. Run: brew upgrade neovim"
+        fi
+    fi
+
+    # Clean nvim cache if update mode or if there are issues
+    if [[ "$UPDATE_MODE" == true ]]; then
+        info "Cleaning Neovim plugin cache..."
+        rm -rf "$HOME/.local/share/nvim/lazy"
+        rm -rf "$HOME/.local/state/nvim"
+        rm -rf "$HOME/.cache/nvim"
+        info "Neovim cache cleared - plugins will reinstall on next launch"
+    fi
+
+    # Create necessary directories
+    mkdir -p "$HOME/.local/share/nvim"
+    mkdir -p "$HOME/.local/state/nvim"
 }
 
 # ============================================
 # 8. Post-install setup
 # ============================================
 post_install() {
-    info "Running post-install setup..."
+    step "Running post-install setup..."
 
     # Setup bat themes
     if command -v bat &> /dev/null; then
         bat cache --build 2>/dev/null || true
     fi
 
-    # Create .config directory if it doesn't exist
+    # Create directories
     mkdir -p "$HOME/.config"
-
-    # Create nvm directory
     mkdir -p "$HOME/.nvm"
 
     # Create secrets file from example if it doesn't exist
@@ -215,16 +275,31 @@ post_install() {
 }
 
 # ============================================
+# 9. Pull latest dotfiles
+# ============================================
+update_dotfiles() {
+    if [[ "$UPDATE_MODE" == true ]]; then
+        step "Pulling latest dotfiles..."
+        cd "$DOTFILES_DIR"
+        git pull --rebase || warn "Failed to pull dotfiles"
+    fi
+}
+
+# ============================================
 # Main
 # ============================================
 main() {
     echo ""
     echo "=========================================="
-    echo "       Dotfiles Setup Script"
+    if [[ "$UPDATE_MODE" == true ]]; then
+        echo "       Dotfiles Update Script"
+    else
+        echo "       Dotfiles Setup Script"
+    fi
     echo "=========================================="
     echo ""
 
-    # Check if running from dotfiles directory
+    # Check if dotfiles directory exists
     if [[ ! -d "$DOTFILES_DIR" ]]; then
         error "Dotfiles directory not found at $DOTFILES_DIR"
         error "Please clone the repo first:"
@@ -232,12 +307,18 @@ main() {
         exit 1
     fi
 
-    install_homebrew
+    # Run update first if in update mode
+    if [[ "$UPDATE_MODE" == true ]]; then
+        update_dotfiles
+    fi
+
+    setup_homebrew
     install_brew_packages
     install_oh_my_zsh
     install_zsh_plugins
     setup_fzf
     create_symlinks
+    setup_neovim
     post_install
 
     echo ""
@@ -250,11 +331,13 @@ main() {
     echo "  2. Run 'p10k configure' if you want to customize the prompt"
     echo "  3. Open nvim to let lazy.nvim install plugins"
     echo ""
-    echo "Optional tools to install manually:"
-    echo "  - kubectl: brew install kubectl"
-    echo "  - gcloud: brew install google-cloud-sdk"
-    echo "  - poetry: curl -sSL https://install.python-poetry.org | python3 -"
-    echo "  - Flutter: https://flutter.dev/docs/get-started/install"
+    if [[ "$UPDATE_MODE" != true ]]; then
+        echo "To update everything later, run:"
+        echo "  ~/.dotfiles/setup.sh --update"
+        echo ""
+    fi
+    echo "Optional tools:"
+    echo "  brew install kubectl google-cloud-sdk"
     echo ""
 }
 
