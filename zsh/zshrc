@@ -26,18 +26,22 @@ plugins=(
 # Load Oh My Zsh
 source $ZSH/oh-my-zsh.sh
 
-# Powerlevel10k (homebrew)
-source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
+# Powerlevel10k (homebrew or oh-my-zsh)
+if [[ -f /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme ]]; then
+    source /opt/homebrew/share/powerlevel10k/powerlevel10k.zsh-theme
+elif [[ -f ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k/powerlevel10k.zsh-theme ]]; then
+    source ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k/powerlevel10k.zsh-theme
+fi
 
 # Autosuggestions style
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=23'
 
-# Source additional plugins from homebrew
-source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+# Source additional plugins from homebrew (if they exist)
+[[ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
-# Initialize go-prj-root
-source /Users/nemanjamudrinic/.local/bin/go-prj-root
+# Initialize go-prj-root (if installed)
+[[ -f "$HOME/.local/bin/go-prj-root" ]] && source "$HOME/.local/bin/go-prj-root"
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
