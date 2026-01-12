@@ -61,10 +61,9 @@ setup_homebrew() {
 install_brew_packages() {
     step "Installing Homebrew packages..."
 
-    # Core tools
+    # Core tools (formulas only, not casks)
     BREW_PACKAGES=(
-        # Terminal & Editor
-        ghostty
+        # Editor
         neovim
         tmux
 
@@ -107,23 +106,18 @@ install_brew_packages() {
     done
 
     # Install casks (GUI apps)
-    BREW_CASKS=(
-        ghostty
-    )
-
-    for cask in "${BREW_CASKS[@]}"; do
-        if brew list --cask "$cask" &> /dev/null; then
-            if [[ "$UPDATE_MODE" == true ]]; then
-                info "Upgrading $cask..."
-                brew upgrade --cask "$cask" 2>/dev/null || info "$cask already up to date"
-            else
-                info "$cask already installed"
-            fi
+    # Ghostty - check if already installed (cask or app exists)
+    if brew list --cask ghostty &> /dev/null || [[ -d "/Applications/Ghostty.app" ]]; then
+        if [[ "$UPDATE_MODE" == true ]]; then
+            info "Upgrading ghostty..."
+            brew upgrade --cask ghostty 2>/dev/null || info "ghostty already up to date"
         else
-            info "Installing $cask..."
-            brew install --cask "$cask" 2>/dev/null || info "$cask might be a formula, not a cask"
+            info "ghostty already installed"
         fi
-    done
+    else
+        info "Installing ghostty..."
+        brew install --cask ghostty
+    fi
 }
 
 # ============================================
@@ -145,29 +139,33 @@ install_oh_my_zsh() {
 # ============================================
 # 4. Install/Update Zsh plugins
 # ============================================
+install_zsh_plugin() {
+    local name="$1"
+    local url="$2"
+    local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+    local plugin_dir="$ZSH_CUSTOM/plugins/$name"
+
+    if [[ ! -d "$plugin_dir" ]]; then
+        info "Installing $name..."
+        git clone "$url" "$plugin_dir"
+    elif [[ "$UPDATE_MODE" == true ]]; then
+        info "Updating $name..."
+        (cd "$plugin_dir" && git pull --rebase --quiet) || warn "Failed to update $name"
+    else
+        info "$name already installed"
+    fi
+}
+
 install_zsh_plugins() {
     local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
     step "Setting up Zsh plugins..."
 
-    # Plugin repos to install/update
-    declare -A PLUGINS=(
-        ["zsh-autosuggestions"]="https://github.com/zsh-users/zsh-autosuggestions"
-        ["zsh-syntax-highlighting"]="https://github.com/zsh-users/zsh-syntax-highlighting"
-        ["zsh-history-substring-search"]="https://github.com/zsh-users/zsh-history-substring-search"
-        ["zsh-kubectl-prompt"]="https://github.com/superbrothers/zsh-kubectl-prompt"
-    )
-
-    for plugin in "${!PLUGINS[@]}"; do
-        local plugin_dir="$ZSH_CUSTOM/plugins/$plugin"
-        if [[ ! -d "$plugin_dir" ]]; then
-            info "Installing $plugin..."
-            git clone "${PLUGINS[$plugin]}" "$plugin_dir"
-        elif [[ "$UPDATE_MODE" == true ]]; then
-            info "Updating $plugin..."
-            (cd "$plugin_dir" && git pull --rebase --quiet) || warn "Failed to update $plugin"
-        fi
-    done
+    # Install/update plugins
+    install_zsh_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions"
+    install_zsh_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting"
+    install_zsh_plugin "zsh-history-substring-search" "https://github.com/zsh-users/zsh-history-substring-search"
+    install_zsh_plugin "zsh-kubectl-prompt" "https://github.com/superbrothers/zsh-kubectl-prompt"
 
     # Powerlevel10k theme
     local p10k_dir="$ZSH_CUSTOM/themes/powerlevel10k"
@@ -177,6 +175,8 @@ install_zsh_plugins() {
     elif [[ "$UPDATE_MODE" == true ]]; then
         info "Updating powerlevel10k..."
         (cd "$p10k_dir" && git pull --rebase --quiet) || warn "Failed to update powerlevel10k"
+    else
+        info "powerlevel10k already installed"
     fi
 }
 
