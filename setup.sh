@@ -206,6 +206,12 @@ post_install() {
 
     # Create nvm directory
     mkdir -p "$HOME/.nvm"
+
+    # Create secrets file from example if it doesn't exist
+    if [[ ! -f "$HOME/.secrets" ]]; then
+        cp "$DOTFILES_DIR/zsh/secrets.example" "$HOME/.secrets"
+        warn "Created ~/.secrets - please add your API keys!"
+    fi
 }
 
 # ============================================
