@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HOST="${SENSEI_HOST:-sensei}"
+DOMAIN="sensei.internal.nimbus-tech.io"
+API="https://coolify.$DOMAIN/api/v1"
+API_ITEM="Coolify sensei API"
+SHARE_PROJECT="quick-shares"
+SHARE_ENV="production"
+NAME_RE='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+OP_VAULT_FOUND=""
+CLEANUP_HINT=""
+
+usage() {
+  cat <<'EOF'
+sensei — Coolify on the sensei VM, without UI clicks
+
+  sensei                       fzf menu of the commands below
+  sensei ls                    resources in Coolify: name, type, status, URL
+  sensei share [dir]           quick share a folder at https://<name>.sensei.internal.nimbus-tech.io
+                               (optional basic auth, passwords go to 1Password "sensei share <name>")
+  sensei logs [name] [lines]   runtime logs of a resource (default 200 lines)
+  sensei restart [name]        restart a resource (needed after nginx.conf/htpasswd changes)
+  sensei down [name]           delete the resource, /data/sites/<name> and its 1Password item (asks first)
+  sensei ssh [-- cmd…]         ssh sensei
+  sensei ps                    containers on sensei (sudo docker ps)
+  sensei df                    disk, memory and docker disk use
+  sensei help
+
+A missing [name] opens an fzf picker over `sensei ls`.
+API commands need a Coolify API token in 1Password, item "Coolify sensei API", field credential
+(vault from OP_VAULT, else Private / Employee). Create it in Coolify → Keys & Tokens
+(`logs` needs the read:sensitive or root ability), then: secret-put "Coolify sensei API" credential
+EOF
+}
+
+die() {
+  echo "sensei: $*" >&2
+  [[ -z "$CLEANUP_HINT" ]] || echo "sensei: clean up with: $CLEANUP_HINT" >&2
+  exit 1
+}
+
+confirm() {
+  local a
+  read -r -p "$1 [y/N] " a
+  [[ "$a" =~ ^[yY]([eE][sS])?$ ]]
+}
+
+on_host() { ssh -o BatchMode=yes "$HOST" "$@"; }
+
+load_token() {
+  [[ -z "${TOKEN:-}" ]] || return 0
+  command -v op >/dev/null || die "1Password CLI (op) not installed"
+  # op whoami reports "not signed in" under the desktop-app integration even when op works
+  if ! op vault list >/dev/null 2>&1; then
+    if ! { [[ -t 0 ]] && op signin >/dev/null 2>&1 && op vault list >/dev/null 2>&1; }; then
+      die "not signed in to 1Password — unlock the app, then: op signin"
+    fi
+  fi
+  local v
+  for v in ${OP_VAULT:+"$OP_VAULT"} Private Employee; do
+    if TOKEN="$(op read "op://$v/$API_ITEM/credential" 2>/dev/null)" && [[ -n "$TOKEN" ]]; then
+      OP_VAULT_FOUND="$v"
+      return 0
+    fi
+  done
+  TOKEN=""
+  die "no Coolify API token in 1Password — create one in Coolify → Keys & Tokens and run: secret-put \"$API_ITEM\" credential"
+}
+
+# The token reaches curl through a /dev/fd header file, so it never shows up in ps or on disk.
+api() {
+  local method="$1" path="$2" body="${3:-}" out code msg
+  local -a args=(-sS -X "$method" -H "Accept: application/json" -w $'\n%{http_code}')
+  [[ -z "$body" ]] || args+=(-H "Content-Type: application/json" --data-binary "$body")
+  out="$(curl "${args[@]}" -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") "$API$path")" \
+    || die "cannot reach $API"
+  code="${out##*$'\n'}"
+  out="${out%$'\n'*}"
+  if [[ "$code" -ge 300 ]]; then
+    msg="$(jq -r '[.message // empty, (.errors // {} | to_entries[] | "\(.key): \(.value | tostring)")] | join("; ")' <<<"$out" 2>/dev/null || true)"
+    case "$code" in
+      401) die "Coolify rejected the API token (401) — create a new one in Coolify → Keys & Tokens and run: secret-put \"$API_ITEM\" credential" ;;
+      403) die "$method $path → 403 ${msg:-forbidden} (the token needs more abilities, e.g. read:sensitive for logs)" ;;
+      *)   die "$method $path → $code ${msg:-$out}" ;;
+    esac
+  fi
+  printf '%s\n' "$out"
+}
+
+# name \t type \t status \t url \t uuid
+resource_rows() {
+  load_token
+  local apps svcs uuid
+  apps="$(api GET /applications)"
+  svcs="$(api GET /services)"
+  jq -r '.[] | [.name, "application", (.status // "?"), ((.fqdn // "") | split(",")[0]), .uuid] | @tsv' <<<"$apps"
+  for uuid in $(jq -r '.[].uuid' <<<"$svcs"); do
+    api GET "/services/$uuid" | jq -r '[.name, "service", (.status // "?"),
+      ([.applications[]? | .fqdn // empty | split(",")[] | sub(":[0-9]+$"; "")] | first // ""), .uuid] | @tsv'
+  done
+}
+
+pick_resource() {
+  local rows
+  rows="$(resource_rows)"
+  [[ -n "$rows" ]] || die "no resources in Coolify"
+  fzf --delimiter=$'\t' --with-nth=1..4 --tabstop=2 --prompt="${1:-resource}> " <<<"$rows" | cut -f1
+}
+
+name_arg() {
+  if [[ -n "${1:-}" ]]; then echo "$1"; else pick_resource "${2:-}" || die "nothing picked"; fi
+}
+
+# prints: type \t uuid \t url
+find_resource() {
+  local name="$1" rows matches
+  rows="$(resource_rows)"
+  matches="$(awk -F'\t' -v n="$name" '$1 == n {print $2 "\t" $5 "\t" $4}' <<<"$rows")"
+  [[ -n "$matches" ]] || die "no Coolify resource named \"$name\" (see: sensei ls)"
+  [[ "$(wc -l <<<"$matches")" -eq 1 ]] || die "more than one resource named \"$name\" — rename one in Coolify"
+  echo "$matches"
+}
+
+cmd_ls() {
+  local rows
+  rows="$(resource_rows)"
+  { printf 'NAME\tTYPE\tSTATUS\tURL\n'; cut -f1-4 <<<"$rows"; } | column -t -s $'\t'
+}
+
+cmd_logs() {
+  load_token
+  local name found type uuid lines="${2:-200}" sub
+  name="$(name_arg "${1:-}" logs)"
+  found="$(find_resource "$name")"
+  IFS=$'\t' read -r type uuid _ <<<"$found"
+  if [[ "$type" == application ]]; then
+    api GET "/applications/$uuid/logs?lines=$lines" | jq -r '.logs'
+    return
+  fi
+  sub="$(api GET "/services/$uuid" | jq -r '.applications[]?.name')"
+  [[ -n "$sub" ]] || die "service \"$name\" has no containers"
+  [[ "$(wc -l <<<"$sub")" -eq 1 ]] || sub="$(fzf --prompt='container> ' <<<"$sub")" || die "nothing picked"
+  api GET "/services/$uuid/logs?sub_service_name=$sub&lines=$lines" | jq -r '.logs'
+}
+
+cmd_restart() {
+  load_token
+  local name found type uuid
+  name="$(name_arg "${1:-}" restart)"
+  found="$(find_resource "$name")"
+  IFS=$'\t' read -r type uuid _ <<<"$found"
+  api POST "/${type}s/$uuid/restart" | jq -r '.message // .'
+}
+
+share_item_exists() { op item get "sensei share $1" --vault "$OP_VAULT_FOUND" >/dev/null 2>&1; }
+
+cmd_down() {
+  load_token
+  local name found type uuid url site=""
+  name="$(name_arg "${1:-}" down)"
+  found="$(find_resource "$name")"
+  IFS=$'\t' read -r type uuid url <<<"$found"
+  if [[ "$name" =~ $NAME_RE ]]; then
+    site="$(on_host "sudo du -sh /data/sites/$name 2>/dev/null | cut -f1" || true)"
+  fi
+  echo "This deletes:"
+  echo "  Coolify $type \"$name\" ($uuid) ${url:+— $url stops answering}, with its containers and volumes"
+  [[ -z "$site" ]] || echo "  $HOST:/data/sites/$name ($site)"
+  share_item_exists "$name" && echo "  1Password item \"sensei share $name\" (archived, vault $OP_VAULT_FOUND)"
+  confirm "Delete all of this?" || { echo "Nothing deleted."; return 0; }
+  api DELETE "/${type}s/$uuid" | jq -r '.message // .'
+  [[ -z "$site" ]] || { on_host "sudo rm -rf /data/sites/$name"; echo "Removed /data/sites/$name"; }
+  if share_item_exists "$name"; then
+    op item delete "sensei share $name" --vault "$OP_VAULT_FOUND" --archive && echo "Archived 1Password item \"sensei share $name\""
+  fi
+}
+
+cmd_ssh() {
+  [[ "${1:-}" != "--" ]] || shift
+  exec ssh "$HOST" "$@"
+}
+
+cmd_ps() {
+  on_host "sudo docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}'"
+}
+
+cmd_df() {
+  on_host 'echo "== disk"; df -h /; echo; echo "== memory"; free -h; echo; echo "== docker"; sudo docker system df'
+}
+
+pick_dir() {
+  local d
+  d="$(fd --type d --max-depth 4 --exclude node_modules . 2>/dev/null | sed 's|/$||' | { echo .; cat; } \
+    | fzf --prompt='folder to share> ' --preview 'ls -la {}')" || die "no folder picked"
+  echo "$d"
+}
+
+nginx_conf() {
+  local name="$1" protected="$2" auth=""
+  if [[ "$protected" == yes ]]; then
+    auth="
+        auth_basic \"$name\";
+        auth_basic_user_file /etc/nginx/.htpasswd;"
+  fi
+  cat <<EOF
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+
+    location = /healthz {
+        auth_basic off;
+        return 200 "ok\n";
+    }
+
+    location = /favicon.ico {
+        auth_basic off;
+        access_log off;
+        return 204;
+    }
+
+    location / {$auth
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+}
+
+compose_line() {
+  local name="$1" protected="$2" d="/data/sites/$1" ht=""
+  [[ "$protected" == yes ]] && ht=", '$d/htpasswd:/etc/nginx/.htpasswd:ro'"
+  printf "services: {%s: {image: 'nginx:1.27-alpine', volumes: ['%s/html:/usr/share/nginx/html:ro', '%s/nginx.conf:/etc/nginx/conf.d/default.conf:ro'%s]}}" \
+    "$name" "$d" "$d" "$ht"
+}
+
+upload_site() {
+  local name="$1" stage="$2" d="/data/sites/$1"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$stage" -czf - . | on_host "sudo bash -c '
+    set -e; mkdir -p $d; tar -xzf - -C $d --no-same-owner
+    chown -R root:root $d; chmod 755 $d $d/html
+    find $d/html -type d -exec chmod 755 {} +; find $d/html -type f -exec chmod 644 {} +
+    chmod 644 $d/nginx.conf
+    if [ -f $d/htpasswd ]; then chown root:101 $d/htpasswd; chmod 640 $d/htpasswd; fi'"
+}
+
+# Passwords come in on stdin ("user\tpassword" lines) and reach op as a JSON item, never as arguments or files.
+store_passwords() {
+  local name="$1" url="$2"
+  jq -Rn --arg title "sensei share $name" '
+      {title: $title, category: "LOGIN",
+       fields: [inputs | split("\t") | {type: "CONCEALED", label: .[0], value: .[1]}]}' \
+    | op item create --vault "$OP_VAULT_FOUND" --tags sensei-share --url "$url" - >/dev/null
+}
+
+wait_up() {
+  local url="$1" code i
+  printf 'Waiting for %s ' "$url" >&2
+  for i in $(seq 1 60); do
+    code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$url" || true)"
+    if [[ "$code" == 200 || "$code" == 401 ]]; then echo " $code" >&2; return 0; fi
+    printf '.' >&2
+    [[ $i -eq 60 ]] || sleep 3
+  done
+  echo " last status $code" >&2
+  return 1
+}
+
+cmd_share() {
+  load_token
+  command -v openssl >/dev/null || die "openssl not installed"
+  local dir="${1:-}" name default url protected=no users_in user p creds="" rows project server body uuid stored=no
+  local -a users=()
+  [[ -n "$dir" ]] || dir="$(pick_dir)"
+  [[ -d "$dir" ]] || die "not a folder: $dir"
+  dir="$(cd "$dir" && pwd)"
+  [[ -n "$(ls -A "$dir")" ]] || die "folder is empty: $dir"
+  [[ -f "$dir/index.html" ]] || echo "Note: $dir has no index.html — the root URL will not show a page." >&2
+
+  default="$(basename "$dir" | tr '[:upper:]_ .' '[:lower:]---' | tr -cd 'a-z0-9-' | sed 's/^-*//; s/-*$//')"
+  read -r -e -i "$default" -p "Name: " name
+  [[ "$name" =~ $NAME_RE ]] || die "invalid name \"$name\" (lowercase letters, digits, dashes; max 63)"
+  url="https://$name.$DOMAIN"
+  echo "  → $url"
+
+  if confirm "Password-protect it?"; then
+    protected=yes
+    read -r -p "Users (comma-separated): " users_in
+    IFS=',' read -r -a users <<<"${users_in// /}"
+    [[ ${#users[@]} -gt 0 ]] || die "no users given"
+    for user in "${users[@]}"; do
+      [[ "$user" =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid user name \"$user\""
+    done
+  fi
+
+  project="$(api GET /projects | jq -r --arg p "$SHARE_PROJECT" '.[] | select(.name == $p) | .uuid' | head -1)"
+  [[ -n "$project" ]] || die "Coolify project \"$SHARE_PROJECT\" not found"
+  server="$(api GET /servers | jq -r 'if length == 1 then .[0].uuid else (.[] | select(.name == "localhost") | .uuid) end' | head -1)"
+  [[ -n "$server" ]] || die "Coolify server \"localhost\" not found"
+  rows="$(resource_rows)"
+  ! cut -f1 <<<"$rows" | grep -qx "$name" || die "a Coolify resource named \"$name\" already exists"
+  on_host "test ! -e /data/sites/$name" || die "$HOST:/data/sites/$name already exists"
+  [[ "$protected" == no ]] || ! share_item_exists "$name" || die "1Password item \"sensei share $name\" already exists in $OP_VAULT_FOUND"
+
+  echo
+  echo "This makes PUBLIC on the internet:"
+  echo "  $url  ←  $dir ($(du -sh "$dir" | cut -f1), $(find "$dir" -type f -not -path '*/.git/*' | wc -l | tr -d ' ') files)"
+  if [[ "$protected" == yes ]]; then echo "  basic auth, users: ${users[*]}"; else echo "  NO password — anyone with the link can open it"; fi
+  echo "  Coolify: project $SHARE_PROJECT / $SHARE_ENV, Docker Compose service \"$name\"; files in $HOST:/data/sites/$name"
+  confirm "Create it?" || { echo "Nothing created."; return 0; }
+
+  STAGE="$(mktemp -d)"
+  trap 'rm -rf "${STAGE:-}"' EXIT
+  rsync -a --exclude .git --exclude .DS_Store "$dir"/ "$STAGE/html/"
+  nginx_conf "$name" "$protected" >"$STAGE/nginx.conf"
+  if [[ "$protected" == yes ]]; then
+    for user in "${users[@]}"; do
+      p="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)"
+      creds+="$user"$'\t'"$p"$'\n'
+      printf '%s:%s\n' "$user" "$(printf '%s\n' "$p" | openssl passwd -apr1 -stdin)" >>"$STAGE/htpasswd"
+    done
+    if printf '%s' "$creds" | store_passwords "$name" "$url"; then stored=yes; else echo "sensei: storing passwords in 1Password failed" >&2; fi
+  fi
+
+  echo "Copying files to $HOST:/data/sites/$name …"
+  upload_site "$name" "$STAGE"
+  CLEANUP_HINT="ssh $HOST sudo rm -rf /data/sites/$name"
+
+  body="$(jq -n --arg name "$name" --arg project "$project" --arg env "$SHARE_ENV" --arg server "$server" \
+    --arg compose "$(compose_line "$name" "$protected" | base64 | tr -d '\n')" --arg url "$url:80" '
+      {name: $name, description: "quick share (sensei CLI)", project_uuid: $project, environment_name: $env,
+       server_uuid: $server, docker_compose_raw: $compose, urls: [{name: $name, url: $url}], instant_deploy: false}')"
+  uuid="$(api POST /services "$body" | jq -r '.uuid')"
+  CLEANUP_HINT="sensei down $name"
+  echo "Created Coolify service $name ($uuid); deploying …"
+  api POST "/services/$uuid/start" | jq -r '.message // .'
+  wait_up "$url" || die "$url does not answer yet — check: sensei logs $name"
+  CLEANUP_HINT=""
+
+  echo
+  echo "Live: $url"
+  [[ "$protected" == yes ]] || return 0
+  echo "Users: ${users[*]}"
+  if [[ "$stored" == yes ]]; then
+    echo "Passwords: 1Password \"sensei share $name\" (vault $OP_VAULT_FOUND), one field per user"
+  else
+    echo "Passwords (shown once — 1Password storing failed, save them now):"
+    printf '%s' "$creds" | sed 's/^/  /; s/\t/  /'
+  fi
+}
+
+COMMANDS=$'ls\tresources in Coolify\nshare\tquick share a folder\nlogs\truntime logs of a resource\nrestart\trestart a resource\ndown\tdelete a resource and its files\nps\tcontainers on sensei\ndf\tdisk and memory\nssh\tshell on sensei\nhelp\tusage'
+
+menu() {
+  local c
+  c="$(fzf --delimiter=$'\t' --tabstop=10 --prompt='sensei> ' --height=14 --layout=reverse <<<"$COMMANDS" | cut -f1)" || exit 0
+  main "$c"
+}
+
+main() {
+  local cmd="${1:-}"
+  [[ $# -eq 0 ]] || shift
+  case "$cmd" in
+    "")      menu ;;
+    ls)      cmd_ls ;;
+    share)   cmd_share "$@" ;;
+    logs)    cmd_logs "$@" ;;
+    restart) cmd_restart "$@" ;;
+    down)    cmd_down "$@" ;;
+    ssh)     cmd_ssh "$@" ;;
+    ps)      cmd_ps ;;
+    df)      cmd_df ;;
+    help|-h|--help) usage ;;
+    *)       usage >&2; exit 1 ;;
+  esac
+}
+
+main "$@"

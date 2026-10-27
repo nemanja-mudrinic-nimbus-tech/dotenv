@@ -1,0 +1,125 @@
+{
+  "cleanupPeriodDays": 30,
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get *)",
+      "Bash(kubectl logs *)",
+      "Bash(kubectl rollout status *)",
+      "Bash(kubectl rollout history *)",
+      "Bash(kubectl top *)",
+      "Bash(kubectl describe *)",
+      "Bash(kubectl kustomize *)",
+      "Bash(kubectl config get-contexts*)",
+      "Bash(kubectl config current-context)",
+      "Bash(az pipelines runs list *)",
+      "Bash(az pipelines runs show *)",
+      "Bash(az acr repository show-tags *)",
+      "Bash(az repos pr show *)",
+      "Bash(az repos pr list *)",
+      "Bash(az aks nodepool list *)",
+      "Bash(argocd app get *)",
+      "Bash(argocd app list*)",
+      "Bash(dig *)",
+      "mcp__claude_ai_Google_Drive__read_file_content",
+      "mcp__claude_ai_Google_Drive__search_files",
+      "mcp__claude_ai_Google_Drive__get_file_metadata",
+      "mcp__claude-in-chrome__find",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__get_page_text",
+      "Bash(gh pr list *)",
+      "Bash(gh issue list *)",
+      "Read(~/.dotfiles/claude/skills/**)",
+      "Read(~/.claude/skills/**)",
+      "Read(~/vault/projects/*/index.md)",
+      "Read(~/vault/projects/*/working-notes/**)",
+      "Read(~/vault/projects/*/concepts/**)",
+      "Read(~/.claude/plans/**)",
+      "Bash(~/.dotfiles/bin/pn self)",
+      "Bash(~/.dotfiles/bin/pn self)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/bin/devctl hook-guard"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/bin/devctl hook-session-end"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git -C \"$HOME/vault\" add -A >/dev/null 2>&1 && git -C \"$HOME/vault\" commit -qm \"auto: session end\" >/dev/null 2>&1; exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/bin/secret-guard"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/scripts/statusline.sh",
+    "padding": 0
+  },
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "tmux-claude-hatch@tmux-claude-hatch": true,
+    "mattpocock-skills@mattpocock": true,
+    "plannotator@plannotator": true
+  },
+  "extraKnownMarketplaces": {
+    "tmux-claude-hatch": {
+      "source": {
+        "source": "github",
+        "repo": "craftzdog/tmux-claude-hatch"
+      }
+    },
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      }
+    },
+    "plannotator": {
+      "source": {
+        "source": "github",
+        "repo": "backnotprop/plannotator"
+      }
+    }
+  },
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark-ansi",
+  "switchModelsOnFlag": true,
+  "agentPushNotifEnabled": true,
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  }
+}

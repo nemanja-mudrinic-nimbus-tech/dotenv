@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""recap [YYYY-MM-DD]            summarise a day of Claude Code sessions into ~/.local/share/recap/<date>.md
+recap --dry-run [YYYY-MM-DD]  show the sessions and sizes that would be sent; send nothing
+recap --propose-board <file>  print the activity-board task files for rows with target=board"""
+import datetime as dt
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+PROJECTS = HOME / ".claude/projects"
+OUT = HOME / ".local/share/recap"
+BOARD = HOME / "Documents/sensei/activity-tracker/docs/board"
+MODEL = "haiku"
+MAX_BUDGET_USD = "0.50"
+PROMPT_CHARS = 400
+REPLY_CHARS = 600
+LAST_TURNS = 8
+SESSION_CHARS = 4000
+TOTAL_CHARS = 30000
+BACKLOG_CHARS = 8000
+CLOSED = {"done", "merged", "validated", "duplicate", "cancelled", "wontfix"}
+
+SECRET_RE = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[\w-]{10,}"
+    r"|AKIA[0-9A-Z]{16}|AIza[\w-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+    r"|(?i:(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*)\S{6,}"
+    r"|\b(?=[\w+-]*\d)(?=[\w+-]*[A-Za-z])[\w+-]{40,}\b)"
+)
+
+SYSTEM = """You write a daily digest of one developer's Claude Code sessions.
+Write in ASD-STE100 Simplified Technical English: short active sentences, simple words, the same term for the same thing, no idioms.
+Use only facts from the input. Do not invent work. Do not copy secrets, tokens, keys, passwords or personal data.
+Output only this markdown, no preamble:
+
+## Done
+- <project>: <what was done>   (one bullet per real result; group by project)
+
+## Found while working
+- new problems, facts or ideas that the sessions discovered, which were not the goal of the session
+
+## Where we stopped
+- <project>: <open thread, last state, next step>
+
+## Proposed tasks
+| title | project | target | why |
+|---|---|---|---|
+
+Rules for Proposed tasks:
+- Max 8 rows. Only work that is still open at the end of the day.
+- Do not propose a task that is already on a backlog listed under "Existing backlog" (same intent counts as a match).
+- Do not propose work that the agent factory already does inside a project repo with its own board.
+- target is "board" for a work item (code, setup, research, decision) or "todo" for a personal, time-bound action (call, pay, send, book, reply).
+- project: use one of the given project labels when one fits, else a short lowercase name.
+- title: imperative, max 8 words. why: one short sentence.
+If a section has no items, write "- none"."""
+
+
+def die(msg):
+    sys.exit(f"recap: {msg}")
+
+
+def parse_day(arg):
+    try:
+        return dt.date.fromisoformat(arg) if arg else dt.date.today()
+    except ValueError:
+        die(f"bad date {arg!r}, want YYYY-MM-DD")
+
+
+def local_date(ts):
+    try:
+        return dt.datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date()
+    except (ValueError, AttributeError):
+        return None
+
+
+def clean_prompt(text):
+    text = re.sub(r"<system-reminder>.*?</system-reminder>", "", text, flags=re.S).strip()
+    if not text or text.startswith("<"):
+        return ""
+    return text
+
+
+def clip(text, n):
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def read_session(path, day):
+    cwd, turns, last = None, [], None
+    with open(path, errors="replace") as f:
+        for line in f:
+            if '"timestamp"' not in line or ('"type":"user"' not in line and '"type":"assistant"' not in line):
+                continue
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e.get("isSidechain") or e.get("isMeta") or local_date(e.get("timestamp")) != day:
+                continue
+            cwd = e.get("cwd") or cwd
+            content = (e.get("message") or {}).get("content")
+            if e["type"] == "user":
+                if not isinstance(content, str) or (e.get("origin") or {}).get("kind", "human") != "human":
+                    continue
+                prompt = clean_prompt(content)
+                if prompt:
+                    turns.append({"ts": e["timestamp"], "prompt": clip(prompt, PROMPT_CHARS), "reply": ""})
+                    last = e["timestamp"]
+            elif turns and isinstance(content, list):
+                texts = [b.get("text", "") for b in content if b.get("type") == "text"]
+                if any(t.strip() for t in texts):
+                    turns[-1]["reply"] = clip("\n".join(texts), REPLY_CHARS)
+                    last = e["timestamp"]
+    return {"id": path.stem, "cwd": cwd or "?", "turns": turns, "last": last} if turns else None
+
+
+def render_session(s):
+    turns = s["turns"]
+    kept = turns if len(turns) <= LAST_TURNS + 1 else [turns[0]] + turns[-LAST_TURNS:]
+    lines = [f"### session {s['id'][:8]} · cwd {s['cwd'].replace(str(HOME), '~')} · {len(turns)} prompts"]
+    if len(kept) < len(turns):
+        lines.append(f"(first prompt, then the last {LAST_TURNS} of {len(turns)})")
+    for t in kept:
+        lines.append(f"USER: {t['prompt']}")
+        if t["reply"]:
+            lines.append(f"CLAUDE: {t['reply']}")
+    text = "\n".join(lines)
+    return text if len(text) <= SESSION_CHARS else "…" + text[-SESSION_CHARS:]
+
+
+def sessions_for(day):
+    start = dt.datetime.combine(day, dt.time()).timestamp()
+    found, seen = [], set()
+    paths = sorted(PROJECTS.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime)
+    for path in paths:
+        if path.stat().st_mtime < start:
+            continue
+        s = read_session(path, day)
+        if not s or Path(s["cwd"]) == OUT:
+            continue
+        # Resumed and forked sessions copy earlier turns into the new file.
+        s["turns"] = [t for t in s["turns"] if (t["ts"], t["prompt"]) not in seen]
+        seen.update((t["ts"], t["prompt"]) for t in s["turns"])
+        if s["turns"]:
+            found.append(s)
+    return sorted(found, key=lambda s: s["last"])
+
+
+def task_header(path):
+    head = path.read_text(errors="replace").split("---", 2)
+    fields = dict(re.findall(r'^(\w+):\s*"?(.*?)"?\s*$', head[1] if len(head) > 2 else "", re.M))
+    return fields
+
+
+def open_titles(tasks_dir):
+    titles = []
+    for p in sorted(tasks_dir.glob("*.md")):
+        h = task_header(p)
+        if h.get("title") and h.get("status", "").lower() not in CLOSED:
+            titles.append(f"{h.get('id', p.stem)} {h['title']}")
+    return titles
+
+
+def backlog(sessions):
+    roots = {Path(s["cwd"]).parts[:5] for s in sessions if s["cwd"].startswith(str(HOME / "Documents"))}
+    boards = [BOARD / "tasks"]
+    for pattern in ("Documents/*/docs/board/tasks", "Documents/*/*/docs/board/tasks", "Documents/*/*/*/docs/board/tasks"):
+        for d in glob.glob(str(HOME / pattern)):
+            d = Path(d)
+            if d != BOARD / "tasks" and d.parts[:5] in roots:
+                boards.append(d)
+    blocks = []
+    for d in boards:
+        name = "activity board (personal)" if d == BOARD / "tasks" else f"factory board {d.parents[2].relative_to(HOME)}"
+        body = "\n".join(open_titles(d))
+        if len(body) > BACKLOG_CHARS:
+            body = body[:BACKLOG_CHARS].rsplit("\n", 1)[0]
+        blocks.append(f"### {name}\n{body}")
+    return "\n\n".join(blocks)
+
+
+def project_labels():
+    m = re.search(r"project:\s*\[(.*?)\]", (BOARD / "labels.md").read_text())
+    return m.group(1) if m else ""
+
+
+def redact(text):
+    text = SECRET_RE.sub("[REDACTED]", text)
+    try:
+        r = subprocess.run(
+            ["gitleaks", "stdin", "--no-banner", "--report-format", "json", "--report-path", "-", "--exit-code", "0"],
+            input=text, capture_output=True, text=True, check=True,
+        )
+        for secret in {f["Secret"] for f in json.loads(r.stdout or "[]") if f.get("Secret")}:
+            text = text.replace(secret, "[REDACTED]")
+    except FileNotFoundError:
+        pass
+    return text
+
+
+def build_input(day, sessions):
+    parts, total = [], 0
+    for s in reversed(sessions):
+        block = render_session(s)
+        if total + len(block) > TOTAL_CHARS:
+            break
+        parts.append(block)
+        total += len(block)
+    dropped = len(sessions) - len(parts)
+    note = f"\n({dropped} older sessions left out to keep the input small)" if dropped else ""
+    return redact(
+        f"Date: {day}\nProject labels: {project_labels()}\n\n## Sessions{note}\n\n"
+        + "\n\n".join(reversed(parts))
+        + f"\n\n## Existing backlog (do not propose these again)\n\n{backlog(sessions)}\n"
+    ), len(parts)
+
+
+def dry_run(day):
+    sessions = sessions_for(day)
+    payload, sent = build_input(day, sessions)
+    for s in sessions:
+        print(f"{s['id'][:8]}  {len(s['turns']):3d} prompts  {len(render_session(s)):5d} chars  {s['cwd'].replace(str(HOME), '~')}")
+    print(f"{len(sessions)} sessions, {sent} sent, payload {len(payload)} chars (~{len(payload) // 4} tokens), model {MODEL}")
+
+
+def run(day):
+    sessions = sessions_for(day)
+    if not sessions:
+        die(f"no sessions on {day}")
+    payload, _ = build_input(day, sessions)
+    OUT.mkdir(parents=True, exist_ok=True)
+    # Runs from OUT without persistence or settings so the digest neither records itself nor fires user hooks.
+    r = subprocess.run(
+        ["claude", "-p", "--model", MODEL, "--tools", "", "--no-session-persistence", "--strict-mcp-config",
+         "--setting-sources", "", "--max-budget-usd", MAX_BUDGET_USD, "--output-format", "json", "--system-prompt", SYSTEM],
+        input=payload, capture_output=True, text=True, cwd=OUT,
+    )
+    try:
+        res = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        die(f"claude -p failed: {r.stderr.strip() or r.stdout.strip()}")
+    if res.get("is_error"):
+        die(f"claude -p error: {res.get('result')}")
+    path = OUT / f"{day}.md"
+    path.write_text(f"# Digest {day}\n\n{len(sessions)} sessions.\n\n{res['result'].strip()}\n")
+    print(f"{len(payload)} chars in, cost ${res.get('total_cost_usd', 0):.4f}", file=sys.stderr)
+    print(path)
+
+
+def next_ids():
+    nums = [int(m.group(1)) for p in BOARD.glob("*/AT-*.md") if (m := re.match(r"AT-(\d+)", p.stem))]
+    n = max(nums, default=0)
+    while True:
+        n += 1
+        yield f"AT-{n}"
+
+
+def propose_board(file):
+    text = Path(file).read_text()
+    day = re.search(r"\d{4}-\d{2}-\d{2}", Path(file).stem)
+    added = day.group(0) if day else str(dt.date.today())
+    section = text.split("## Proposed tasks", 1)[-1]
+    labels = {p.strip() for p in project_labels().split(",")}
+    ids = next_ids()
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 4 or cells[2].lower() != "board":
+            continue
+        title, project, _, why = cells
+        tid = next(ids)
+        warn = "" if project in labels else f"# NOTE: add project:{project} to labels.md in the same commit\n"
+        print(f"{warn}==> {BOARD.relative_to(BOARD.parents[1])}/tasks/{tid}.md")
+        print(f'''---
+id: "{tid}"
+title: "{title.replace('"', "'")}"
+status: "backlog"
+blocked_by: ""
+owner: ""
+tester: ""
+labels: ["type:feat", "project:{project}", "source:digest"]
+added: "{added}"
+claimed: ""
+pr: []
+done: ""
+---
+# {tid} — {title}
+
+{why}
+''')
+
+
+def main(argv):
+    if argv[:1] in (["-h"], ["--help"]):
+        print(__doc__)
+    elif argv[:1] == ["--dry-run"]:
+        dry_run(parse_day(argv[1] if len(argv) > 1 else None))
+    elif argv[:1] == ["--propose-board"]:
+        if len(argv) != 2:
+            die("usage: recap --propose-board <file.md>")
+        propose_board(argv[1])
+    elif len(argv) <= 1:
+        run(parse_day(argv[0] if argv else None))
+    else:
+        die(__doc__)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

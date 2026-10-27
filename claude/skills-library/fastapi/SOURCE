@@ -1,0 +1,4 @@
+repo: fastapi/fastapi
+path: fastapi/.agents/skills/fastapi
+commit: 79cab5b
+fetched: 2026-10-26

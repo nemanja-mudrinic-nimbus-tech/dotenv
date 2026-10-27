@@ -1,0 +1,4 @@
+repo: docker/skills
+path: skills/docker-build-strategies
+commit: 179c9cf
+fetched: 2026-10-26

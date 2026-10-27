@@ -1,0 +1,21 @@
+# Local-only shell history: no account, no sync.
+auto_sync = false
+update_check = false
+search_mode = "fuzzy"
+filter_mode = "global"
+style = "compact"
+inline_height = 20
+enter_accept = false
+secrets_filter = true
+# Never store commands that carry credentials.
+history_filter = [
+  "AWS_(SECRET_ACCESS_KEY|SESSION_TOKEN|ACCESS_KEY_ID)=",
+  "(TOKEN|SECRET|PASSWORD|API_KEY)=",
+  "(ghp_|github_pat_|dop_v1_|ops_ey|xox[abp]-|sk-[A-Za-z0-9])",
+  "-----BEGIN",
+  "Authorization: (Bearer|Basic)",
+  "curl .* -u [^ ]+:[^ ]+",
+]
+
+[theme]
+name = "moss"

@@ -1,0 +1,12 @@
+[theme]
+name = "moss"
+
+[colors]
+Base = "#e2e5df"
+Title = "#3fd468"
+Guidance = "#80887f"
+Important = "#e6c07b"
+AlertInfo = "#74d0b8"
+AlertWarn = "#e6c07b"
+AlertError = "#f07a6f"
+Annotation = "#a8c4b4"

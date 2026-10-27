@@ -1,0 +1,429 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE="${DEVCTL_STATE:-$HOME/.local/state/devctl}"
+LEDGER="$STATE/ledger.jsonl"
+LOGS="$STATE/logs"
+mkdir -p "$LOGS"
+touch "$LEDGER"
+
+DEV_PATTERN='(^|/)(node|npm|pnpm|yarn|bun|vite|next|tsx|ts-node|nodemon|uvicorn|gunicorn|flask|pytest|air|go-build|rails|puma|webpack|esbuild --watch)( |$)|npm run|pnpm (run )?dev|yarn (run )?dev|python3? -m (uvicorn|flask|http.server|pytest)|go run'
+LONG_RUNNING='(^|[;&|] *)(npm (run )?(dev|start|serve|watch)|pnpm (run )?(dev|start|serve|watch)|yarn (run )?(dev|start|serve|watch)|bun (run )?(dev|start)|npx (vite($| --| dev| serve)|next dev|nodemon)|vite($| --| dev| serve)|next dev|nodemon|uvicorn|gunicorn|flask run|python3? -m (http\.server|uvicorn|flask)|rails (s|server)|go run|air($| )|pytest|jest --watch|vitest( |$))'
+
+usage() {
+  cat <<'EOF'
+devctl — track dev servers / long-running processes so nothing is left running
+
+  devctl run [--name N] -- <cmd…>   start detached in its own process group, log to file, record it
+  devctl ps                         registered processes + untracked dev orphans + listening ports
+  devctl logs <id> [-f]             show (or follow) a registered process's log
+  devctl stop <id>|--session <sid>|--here|--all
+                                    stop registered process group(s); --here = started in this dir tree
+  devctl kill-pid <pid>             stop an untracked process (and its group)
+  devctl pick                       fzf picker over `ps` → stop the selected ones (tmux prefix k)
+  devctl sessions [--pinned|--list]  every Claude session in every folder (★ pinned first, name, folder,
+                                    last active, ● running); ENTER resumes it in its folder, ctrl-p pins (tmux prefix a)
+  devctl pin [--name L] | pin <id> [L]   pin the current Claude session (run inside it) or a given id, optional label
+  devctl unpin <id>
+  Pinned sessions are archived (transcript + name + folder in ~/.local/share/devctl/sessions/), refreshed at
+  every session end, and restored on resume after Claude Code's 30-day cleanup deleted the original (★⌂).
+  devctl prune                      drop dead entries from the ledger
+
+Claude hooks (wired in ~/.claude/settings.json):
+  devctl hook-guard                 PreToolUse(Bash): block unregistered long-running commands
+  devctl hook-session-end           SessionEnd: stop what that session started
+Disable the guard for one session: DEVCTL_GUARD=0 claude
+EOF
+}
+
+die() { echo "devctl: $*" >&2; exit 1; }
+alive() { kill -0 -- "-$1" 2>/dev/null; }
+
+entries_alive() {
+  local line pgid
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    pgid="$(jq -r .pgid <<<"$line")"
+    alive "$pgid" && echo "$line"
+  done < "$LEDGER"
+  return 0
+}
+
+cmd_run() {
+  local name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name) name="$2"; shift 2 ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
+  [[ $# -gt 0 ]] || die "usage: devctl run [--name N] -- <cmd…>"
+  local id log owner session cmdstr
+  id="$(date +%H%M%S)-$RANDOM"
+  log="$LOGS/$id.log"
+  cmdstr="$*"
+  owner="human"; [[ "${CLAUDECODE:-}" == "1" ]] && owner="claude"
+  session="${CLAUDE_CODE_SESSION_ID:-}"
+  [[ -n "$name" ]] || name="$(basename "$PWD"):$1"
+
+  python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" >"$log" 2>&1 < /dev/null &
+  local pid=$!
+  disown "$pid" 2>/dev/null || true
+
+  jq -cn --arg id "$id" --argjson pgid "$pid" --arg name "$name" --arg cmd "$cmdstr" \
+    --arg cwd "$PWD" --arg owner "$owner" --arg session "$session" --arg log "$log" \
+    --arg started "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{id:$id,pgid:$pgid,name:$name,cmd:$cmd,cwd:$cwd,owner:$owner,session:$session,log:$log,started:$started}' >> "$LEDGER"
+
+  sleep 1
+  if alive "$pid"; then
+    echo "devctl: started $id (pgid $pid) — $name"
+  else
+    echo "devctl: $id exited immediately — last log lines:"
+  fi
+  echo "log: $log"
+  tail -n 5 "$log" 2>/dev/null || true
+}
+
+ports_of() {
+  lsof -nP -a -p "$1" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {split($9,a,":"); print a[length(a)]}' | sort -u | paste -sd, -
+}
+
+group_ports() {
+  local pgid="$1" pids p out=""
+  pids="$(pgrep -g "$pgid" 2>/dev/null || true)"
+  for p in $pids; do
+    p="$(ports_of "$p")"; [[ -n "$p" ]] && out="${out:+$out,}$p"
+  done
+  echo "${out:--}"
+}
+
+cwd_of() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | awk '/^n/ {print substr($0,2)}'; }
+
+list_rows() {
+  local line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    printf 'tracked\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$(jq -r .id <<<"$line")" "$(jq -r .pgid <<<"$line")" "$(jq -r .owner <<<"$line")" \
+      "$(group_ports "$(jq -r .pgid <<<"$line")")" "$(jq -r .name <<<"$line")" "$(jq -r .cwd <<<"$line")"
+  done < <(entries_alive)
+
+  local tracked_pgids pid ppid pgid cmd
+  tracked_pgids=" $(entries_alive | jq -r .pgid | tr '\n' ' ') "
+  while read -r pid ppid pgid cmd; do
+    [[ "$ppid" == "1" ]] || continue
+    [[ "$tracked_pgids" == *" $pgid "* ]] && continue
+    grep -qE "$DEV_PATTERN" <<<"$cmd" || continue
+    grep -qE '\.app/|Claude Helper|graphify-mcp|mcp-remote|/Applications/' <<<"$cmd" && continue
+    local ports; ports="$(ports_of "$pid")"
+    printf 'orphan\t-\t%s\t?\t%s\t%s\t%s\n' "$pid" "${ports:--}" "$(cut -c1-60 <<<"$cmd")" "$(cwd_of "$pid")"
+  done < <(ps -U "$(id -u)" -o pid=,ppid=,pgid=,command=)
+}
+
+cmd_ps() {
+  local rows
+  rows="$(list_rows)"
+  if [[ -z "$rows" ]]; then echo "devctl: nothing running (no tracked processes, no dev orphans)"; return 0; fi
+  { printf 'KIND\tID\tPGID/PID\tOWNER\tPORTS\tNAME/CMD\tCWD\n'; echo "$rows"; } | column -t -s $'\t'
+}
+
+stop_group() {
+  local pgid="$1" _
+  alive "$pgid" || return 0
+  kill -TERM -- "-$pgid" 2>/dev/null || true
+  for _ in 1 2 3 4 5; do alive "$pgid" || return 0; sleep 1; done
+  kill -KILL -- "-$pgid" 2>/dev/null || true
+}
+
+cmd_stop() {
+  local sel="${1:-}" arg="${2:-}" line pgid n=0
+  [[ -n "$sel" ]] || die "usage: devctl stop <id>|--session <sid>|--here|--all"
+  while IFS= read -r line; do
+    case "$sel" in
+      --all) ;;
+      --session) [[ "$(jq -r .session <<<"$line")" == "$arg" && -n "$arg" ]] || continue ;;
+      --here) [[ "$(jq -r .cwd <<<"$line")" == "$PWD"* ]] || continue ;;
+      *) [[ "$(jq -r .id <<<"$line")" == "$sel" ]] || continue ;;
+    esac
+    pgid="$(jq -r .pgid <<<"$line")"
+    stop_group "$pgid"
+    echo "devctl: stopped $(jq -r .id <<<"$line") — $(jq -r .name <<<"$line")"
+    n=$((n+1))
+  done < <(entries_alive)
+  [[ $n -gt 0 ]] || echo "devctl: nothing to stop for '$sel${arg:+ $arg}'"
+  cmd_prune >/dev/null
+}
+
+cmd_kill_pid() {
+  local pid="${1:-}" pgid
+  [[ -n "$pid" ]] || die "usage: devctl kill-pid <pid>"
+  pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+  if [[ -n "$pgid" && "$pgid" == "$pid" ]]; then stop_group "$pgid"; else kill -TERM "$pid" 2>/dev/null || true; fi
+  echo "devctl: stopped pid $pid"
+}
+
+cmd_logs() {
+  local id="${1:-}" log
+  [[ -n "$id" ]] || die "usage: devctl logs <id> [-f]"
+  log="$(jq -r --arg id "$id" 'select(.id==$id) | .log' "$LEDGER" | tail -1)"
+  [[ -n "$log" ]] || die "no entry $id"
+  if [[ "${2:-}" == "-f" ]]; then tail -f "$log"; else tail -n 100 "$log"; fi
+}
+
+cmd_prune() {
+  local tmp; tmp="$(mktemp)"
+  entries_alive > "$tmp"
+  mv "$tmp" "$LEDGER"
+  find "$LOGS" -name '*.log' -mtime +7 -delete 2>/dev/null || true
+  echo "devctl: ledger pruned"
+}
+
+cmd_pick() {
+  local rows sel kind id pid
+  rows="$(list_rows)"
+  if [[ -z "$rows" ]]; then echo "Nothing running."; read -rsn1; return 0; fi
+  sel="$(printf '%s\n' "$rows" | column -t -s $'\t' | fzf --multi --reverse --header 'TAB select · ENTER stop · ESC cancel   (KIND ID PGID/PID OWNER PORTS NAME CWD)')" || return 0
+  while read -r kind id pid _; do
+    if [[ "$kind" == "tracked" ]]; then cmd_stop "$id"; else cmd_kill_pid "$pid"; fi
+  done <<<"$sel"
+  sleep 1
+}
+
+strip_heredocs() {
+  awk '
+    term != "" { if ($0 ~ "^[[:space:]]*" term "[[:space:]]*$") term = ""; next }
+    {
+      line = $0
+      if (match(line, /<<-?[[:space:]]*["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/)) {
+        tag = substr(line, RSTART, RLENGTH)
+        gsub(/<<-?[[:space:]]*|["\047]/, "", tag)
+        term = tag
+        print substr(line, 1, RSTART - 1)
+      } else print line
+    }'
+}
+
+SESS_CACHE="$STATE/sessions.tsv"
+PINS="$STATE/pins.tsv"
+ARCHIVE="${DEVCTL_ARCHIVE:-$HOME/.local/share/devctl/sessions}"
+touch "$PINS"
+
+transcript_of() {
+  local f
+  for f in "$HOME"/.claude/projects/*/"$1".jsonl; do [[ -f "$f" ]] && { echo "$f"; return 0; }; done
+  return 1
+}
+
+archive_session() {
+  local id="$1" src="${2:-}"
+  [[ -n "$src" ]] || src="$(transcript_of "$id")" || return 0
+  mkdir -p "$ARCHIVE"
+  cp -p "$src" "$ARCHIVE/$id.jsonl"
+  printf '%s\n' "$(basename "$(dirname "$src")")" > "$ARCHIVE/$id.project"
+}
+
+session_meta() {
+  local f="$1" cwd title
+  cwd="$(rg -m1 -o --no-filename '"cwd":"[^"]*"' "$f" 2>/dev/null | head -1 | cut -d'"' -f4 || true)"
+  title="$(rg -o --no-filename '"customTitle":"[^"]*"' "$f" 2>/dev/null | tail -1 | cut -d'"' -f4 || true)"
+  [[ -n "$title" ]] || title="$(tail -c 3000000 "$f" | rg -o '"aiTitle":"[^"]*"' 2>/dev/null | tail -1 | cut -d'"' -f4 || true)"
+  printf '%s\t%s\n' "$cwd" "${title:-(untitled)}"
+}
+
+fit() {
+  local text="${1:0:$2}"
+  printf '%s%*s' "$text" $(( $2 - ${#text} )) ''
+}
+
+session_rows() {
+  local f id cwd title mtime epoch running pid sid meta pin label pcwd only_pinned="${1:-}"
+  declare -A live=() cache_epoch=() cache_meta=() pinned=() pinned_cwd=() seen=()
+  while IFS=$'\t' read -r id label pcwd; do
+    [[ -n "$id" ]] && { pinned[$id]="$label"; pinned_cwd[$id]="$pcwd"; }
+  done < "$PINS"
+  for f in "$HOME"/.claude/sessions/*.json; do
+    [[ -f "$f" ]] || continue
+    pid="$(jq -r .pid "$f" 2>/dev/null)"; sid="$(jq -r .sessionId "$f" 2>/dev/null)"
+    kill -0 "$pid" 2>/dev/null && live[$sid]="$pid"
+  done
+  if [[ -f "$SESS_CACHE" ]]; then
+    while IFS=$'\t' read -r id epoch cwd title; do
+      cache_epoch[$id]="$epoch"; cache_meta[$id]="$cwd"$'\t'"$title"
+    done < "$SESS_CACHE"
+  fi
+  local tmp; tmp="$(mktemp)"
+  {
+  for f in "$HOME"/.claude/projects/*/*.jsonl; do
+    [[ -f "$f" ]] || continue
+    id="$(basename "$f" .jsonl)"
+    seen[$id]=1
+    epoch="$(stat -f %m "$f")"
+    if [[ "${cache_epoch[$id]:-}" == "$epoch" ]]; then
+      meta="${cache_meta[$id]}"
+    else
+      meta="$(session_meta "$f")"
+    fi
+    cwd="${meta%%$'\t'*}"; title="${meta#*$'\t'}"
+    printf '%s\t%s\t%s\t%s\n' "$id" "$epoch" "$cwd" "$title" >> "$tmp"
+    [[ -n "$cwd" ]] || continue
+    pin=" "
+    if [[ -v "pinned[$id]" ]]; then
+      pin="★"; [[ -n "${pinned[$id]}" ]] && title="${pinned[$id]}"
+    elif [[ "$only_pinned" == "--pinned" ]]; then
+      continue
+    fi
+    mtime="$(date -r "$epoch" '+%d %b %H:%M')"
+    running=" "; [[ -n "${live[$id]:-}" ]] && running="●"
+    printf '%s \t%s \t%s \t%s\t%s\t%s\t%s\t%s\n' "$mtime" "$pin$running" "$(fit "$title" 46)" "${cwd/#$HOME/\~}" "$id" "$([[ $pin == "★" ]] && echo 1 || echo 0)" "${cwd##*/}" "$epoch"
+  done
+  for id in "${!pinned[@]}"; do
+    [[ -v "seen[$id]" ]] && continue
+    [[ -f "$ARCHIVE/$id.jsonl" ]] || continue
+    epoch="$(stat -f %m "$ARCHIVE/$id.jsonl")"
+    mtime="$(date -r "$epoch" '+%d %b %H:%M')"
+    printf '%s \t%s \t%s \t%s\t%s\t1\t%s\t%s\n' "$mtime" "★⌂" "$(fit "${pinned[$id]:-(archived)}" 46)" "${pinned_cwd[$id]/#$HOME/\~}" "$id" "${pinned_cwd[$id]##*/}" "$epoch"
+  done
+  } | sort -t $'\t' -k6,6r -k8,8nr | cut -f1-5,7
+  mv "$tmp" "$SESS_CACHE"
+}
+
+pane_of_pid() {
+  local pid="$1" ppid pane
+  while [[ -n "$pid" && "$pid" != "1" ]]; do
+    pane="$(tmux list-panes -a -F '#{pane_pid} #{session_name}:#{window_index}.#{pane_index}' 2>/dev/null | awk -v p="$pid" '$1==p {print $2}')"
+    [[ -n "$pane" ]] && { echo "$pane"; return 0; }
+    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    pid="$ppid"
+  done
+  return 1
+}
+
+cmd_pin() {
+  local id="${1:-}" label="${2:-}"
+  if [[ -z "$id" || "$id" == "--name" ]]; then
+    [[ "$id" == "--name" ]] && label="${2:-}"
+    id="${CLAUDE_CODE_SESSION_ID:-}"
+    [[ -n "$id" ]] || die "usage: devctl pin <session-id> [label]   (inside Claude: devctl pin [--name label])"
+  fi
+  local tmp src cwd
+  src="$(transcript_of "$id")" || die "no transcript for session $id"
+  cwd="$(rg -m1 -o --no-filename '"cwd":"[^"]*"' "$src" 2>/dev/null | head -1 | cut -d'"' -f4 || true)"
+  [[ -n "$label" ]] || label="$(rg -o --no-filename '"customTitle":"[^"]*"' "$src" 2>/dev/null | tail -1 | cut -d'"' -f4 || true)"
+  [[ -n "$label" ]] || label="$(tail -c 3000000 "$src" | rg -o '"aiTitle":"[^"]*"' 2>/dev/null | tail -1 | cut -d'"' -f4 || true)"
+  archive_session "$id" "$src"
+  tmp="$(mktemp)"
+  awk -F'\t' -v id="$id" '$1 != id' "$PINS" > "$tmp"
+  printf '%s\t%s\t%s\n' "$id" "$label" "$cwd" >> "$tmp"
+  mv "$tmp" "$PINS"
+  if [[ -n "$label" ]]; then echo "devctl: pinned $id as \"$label\""; else echo "devctl: pinned $id"; fi
+}
+
+cmd_unpin() {
+  local id="${1:-}" tmp
+  [[ -n "$id" ]] || die "usage: devctl unpin <session-id>"
+  tmp="$(mktemp)"; awk -F'\t' -v id="$id" '$1 != id' "$PINS" > "$tmp"; mv "$tmp" "$PINS"
+  rm -f "$ARCHIVE/$id.jsonl" "$ARCHIVE/$id.project"
+  echo "devctl: unpinned $id (archived copy removed; Claude's own cleanup applies again)"
+}
+
+cmd_pin_toggle() {
+  local id="${1:-}"
+  if awk -F'\t' -v id="$id" '$1 == id {found=1} END {exit !found}' "$PINS"; then cmd_unpin "$id"; else cmd_pin "$id"; fi
+}
+
+cmd_sessions() {
+  case "${1:-}" in
+    --list) session_rows "${2:-}" | column -t -s $'\t'; return 0 ;;
+    --rows) session_rows "${2:-}"; return 0 ;;
+  esac
+  local sel id dir title pid pane f self mode="${1:-}"
+  self="$(command -v devctl || echo "$0")"
+  sel="$(session_rows "$mode" | fzf --delimiter=$'\t' --with-nth=1,2,3,6 --tabstop=1 --no-sort \
+        --header $'⏎ resume · ^p pin ★ · ^s pinned · ^a all · ● running' \
+        --bind "ctrl-p:execute-silent($self pin-toggle {5})+reload($self sessions --rows $mode)" \
+        --bind "ctrl-s:reload($self sessions --rows --pinned)" \
+        --bind "ctrl-a:reload($self sessions --rows)" \
+        --preview 'printf "%s\n%s\n\n" "$(echo {3} | sed "s/ *$//")" {4}; grep -o "\"lastPrompt\":\"[^\"]*\"" ~/.claude/projects/*/{5}.jsonl 2>/dev/null | tail -1 | cut -d\" -f4' \
+        --preview-window=down,7,wrap)" || return 0
+  id="$(cut -f5 <<<"$sel")"; title="$(cut -f3 <<<"$sel" | sed 's/ *$//')"
+  dir="$(cut -f4 <<<"$sel")"; dir="${dir/#\~/$HOME}"
+  for f in "$HOME"/.claude/sessions/*.json; do
+    [[ "$(jq -r .sessionId "$f" 2>/dev/null)" == "$id" ]] || continue
+    pid="$(jq -r .pid "$f")"
+    kill -0 "$pid" 2>/dev/null || continue
+    if [[ -n "${TMUX:-}" ]] && pane="$(pane_of_pid "$pid")"; then
+      tmux switch-client -t "$pane"; return 0
+    fi
+    echo "devctl: '$title' is already running (pid $pid) outside tmux — not opening it twice."; return 1
+  done
+  [[ -d "$dir" ]] || die "folder no longer exists: $dir"
+  if ! transcript_of "$id" >/dev/null && [[ -f "$ARCHIVE/$id.jsonl" ]]; then
+    local proj; proj="$(cat "$ARCHIVE/$id.project")"
+    mkdir -p "$HOME/.claude/projects/$proj"
+    cp -p "$ARCHIVE/$id.jsonl" "$HOME/.claude/projects/$proj/$id.jsonl"
+    echo "devctl: restored archived session '$title'"
+  fi
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux new-window -c "$dir" -n "$(cut -c1-20 <<<"$title")" "claude --resume $id"
+  else
+    cd "$dir" && exec claude --resume "$id"
+  fi
+}
+
+cmd_hook_guard() {
+  [[ "${DEVCTL_GUARD:-1}" == "0" ]] && exit 0
+  local input cmd bg
+  input="$(cat)"
+  cmd="$(jq -r '.tool_input.command // empty' <<<"$input")"
+  bg="$(jq -r '.tool_input.run_in_background // false' <<<"$input")"
+  [[ -n "$cmd" ]] || exit 0
+  grep -qE '(^|[;&|] *)devctl ' <<<"$cmd" && exit 0
+  local detached=0 code
+  code="$(strip_heredocs <<<"$cmd")"
+  grep -qE '(^|[;&|] *)nohup ' <<<"$code" && detached=1
+  sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s/[0-9]*>&[0-9-]*//g; s/&>>?//g; s/&&//g" <<<"$code" | grep -q '&' && detached=1
+  if [[ $detached == 1 ]] || { [[ "$bg" == "true" ]] && grep -qE "$LONG_RUNNING" <<<"$code"; }; then
+    cat >&2 <<'EOF'
+Blocked by devctl: long-running process started outside devctl (it would outlive the session and drain battery).
+Start it with:  devctl run --name <short-name> -- <command>
+Then: `devctl logs <id>` to read output, `devctl stop <id>` when done (session end stops it automatically).
+One-shot commands (builds, finite scripts) can run in the foreground or with run_in_background; only `&`/`nohup` detaching and backgrounded dev servers/test watchers are blocked.
+The user can disable the guard for a session with DEVCTL_GUARD=0.
+EOF
+    exit 2
+  fi
+  exit 0
+}
+
+cmd_hook_session_end() {
+  local input sid tpath
+  input="$(cat)"
+  sid="$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null || true)"
+  tpath="$(jq -r '.transcript_path // empty' <<<"$input" 2>/dev/null || true)"
+  [[ -n "$sid" ]] || exit 0
+  cmd_stop --session "$sid" >/dev/null 2>&1 || true
+  if awk -F'\t' -v id="$sid" '$1 == id {f=1} END {exit !f}' "$PINS"; then
+    archive_session "$sid" "$tpath" 2>/dev/null || true
+  fi
+  exit 0
+}
+
+case "${1:-help}" in
+  run)   shift; cmd_run "$@" ;;
+  ps)    cmd_ps ;;
+  logs)  shift; cmd_logs "$@" ;;
+  stop)  shift; cmd_stop "$@" ;;
+  kill-pid) shift; cmd_kill_pid "$@" ;;
+  pick)  cmd_pick ;;
+  sessions) shift; cmd_sessions "$@" ;;
+  pin)      shift; cmd_pin "$@" ;;
+  unpin)    shift; cmd_unpin "$@" ;;
+  pin-toggle) shift; cmd_pin_toggle "$@" ;;
+  prune) cmd_prune ;;
+  hook-guard) cmd_hook_guard ;;
+  hook-session-end) cmd_hook_session_end ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

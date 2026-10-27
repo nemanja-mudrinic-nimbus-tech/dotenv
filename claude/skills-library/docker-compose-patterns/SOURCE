@@ -1,0 +1,4 @@
+repo: docker/skills
+path: skills/docker-compose-patterns
+commit: 179c9cf
+fetched: 2026-10-26

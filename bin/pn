@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+pn — Plannotator from tmux
+
+  pn last [dir]   pick a running Claude session → it opens /plannotator-last in the browser
+  pn tlast        pick a running Claude session → it runs /plannotator-tui (terminal popup, exact session)
+  pn file [dir|file]  annotate a markdown file in the terminal (plannotator-tui); a dir opens a picker (default: cwd)
+  pn web [dir|file]   the same in the browser (plannotator annotate); prints the feedback here when you send it
+  pn self         (for the /plannotator-tui skill) open this Claude session's replies in a popup
+                  over its pane, wait, print the feedback on stdout
+EOF
+}
+
+claude_panes() {
+  tmux list-panes -a -F '#{pane_id}	#{session_name}:#{window_index}.#{pane_index}	#{pane_current_command}	#{pane_current_path}' |
+    awk -F '\t' '$3 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $3 == "claude" { sub(ENVIRON["HOME"], "~", $4); printf "%s\t%-14s\t%s\n", $1, $2, $4 }'
+}
+
+last() {
+  local picked pane
+  picked="$(pick_claude 'Claude sessions · ENTER = review its last reply in the browser')" || exit 0
+  pane="${picked%%$'\t'*}"
+  tmux send-keys -t "$pane" -l '/plannotator-last'
+  tmux send-keys -t "$pane" Enter
+}
+
+pick_claude() {
+  local header="$1"
+  claude_panes | fzf --delimiter='\t' --with-nth=2,3 --reverse --header="$header" \
+    --preview='tmux capture-pane -p -e -t {1} | tail -n 60' --preview-window=right,60%
+}
+
+tlast() {
+  local picked pane
+  picked="$(pick_claude 'Claude sessions · ENTER = review its replies in the terminal')" || exit 0
+  pane="${picked%%$'\t'*}"
+  tmux send-keys -t "$pane" -l '/plannotator-tui'
+  tmux send-keys -t "$pane" Enter
+}
+
+self() {
+  local session="${CLAUDE_CODE_SESSION_ID:?run from a Claude Code session}" pane="${TMUX_PANE:?run inside tmux}"
+  local out; out="$(mktemp -t pn-feedback)"; rm -f "$out"
+  tmux display-popup -E -s bg=#151719 -w 90% -h 90% -t "$pane" -T " Plannotator · S = send to Claude · q = quit " \
+    "before=\$(pbpaste); plannotator-tui last --host claude --session-id '$session'; sleep 0.3; after=\$(pbpaste); \
+     if [ -n \"\$after\" ] && [ \"\$after\" != \"\$before\" ]; then printf '%s' \"\$after\" > '$out.tmp'; else : > '$out.tmp'; fi; mv '$out.tmp' '$out'" &
+  until [[ -e "$out" ]]; do sleep 1; done
+  if [[ -s "$out" ]]; then cat "$out"; else echo "(no feedback — the review was closed without sending)"; fi
+  rm -f "$out"
+}
+
+pick_md() {
+  local target="${1:-$PWD}"
+  if [[ -f "$target" ]]; then
+    echo "$target"; return 0
+  fi
+  cd "$target" || exit 1
+  fd --type f --extension md --hidden --exclude .git --exclude node_modules |
+    fzf --reverse --header="Markdown in ${target/#$HOME/~} · ENTER = annotate" \
+      --preview='bat --color=always --style=plain {} 2>/dev/null || head -100 {}' | sed "s|^|$PWD/|"
+}
+
+web() {
+  local picked
+  picked="$(pick_md "${1:-$PWD}")" || exit 0
+  [[ -n "$picked" ]] || exit 0
+  plannotator annotate "$picked"
+}
+
+file() {
+  local dir="${1:-$PWD}" picked
+  if [[ -f "$dir" ]]; then
+    plannotator-tui "$dir"; return
+  fi
+  cd "$dir"
+  picked="$(fd --type f --extension md --hidden --exclude .git --exclude node_modules |
+    fzf --reverse --header="Markdown in ${dir/#$HOME/~} · ENTER = annotate" \
+      --preview='bat --color=always --style=plain {} 2>/dev/null || head -100 {}')" || exit 0
+  plannotator-tui "$picked"
+}
+
+case "${1:-}" in
+  last) shift; last "$@" ;;
+  tlast) shift; tlast "$@" ;;
+  self) self ;;
+  file) shift; file "$@" ;;
+  web) shift; web "$@" ;;
+  *) usage ;;
+esac

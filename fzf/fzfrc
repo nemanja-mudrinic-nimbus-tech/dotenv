@@ -1,0 +1,11 @@
+--layout=reverse
+--info=inline-right
+--prompt='❯ '
+--pointer=▌
+--marker=▍
+--separator=─
+--scrollbar=▐
+--highlight-line
+--color=bg+:#242b26,bg:-1,fg:#c4c9c1,fg+:#e2e5df:regular,hl:#3fd468,hl+:#6fe08a
+--color=info:#80887f,prompt:#3fd468,pointer:#3fd468,marker:#e6c07b,spinner:#74d0b8
+--color=header:#80887f,border:#2c312d,label:#3fd468,separator:#2c312d,scrollbar:#50574f,gutter:-1,query:#e2e5df

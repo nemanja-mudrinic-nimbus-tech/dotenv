@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# SketchyBar — docs: https://felixkratz.github.io/SketchyBar/
+# Layout follows omerxx/dotfiles (floating rounded bar, SF Symbols, app icons per workspace) in moss colours.
+
+# shellcheck source=SCRIPTDIR/colors.sh
+source "$CONFIG_DIR/colors.sh"
+# shellcheck source=SCRIPTDIR/icons.sh
+source "$CONFIG_DIR/icons.sh"
+PLUGIN_DIR="$CONFIG_DIR/plugins"
+FONT="SF Pro"
+# plugins/icon_map.sh is icon_map.sh from the kvndrsslr/sketchybar-app-font release v3.0.13.
+# Keep it at the same version as the font-sketchybar-app-font cask.
+APP_FONT="sketchybar-app-font:Regular:15.0"
+
+# omerxx size. The bar must end above the AeroSpace window gap (outer.top: 54 px on external monitors, notch strip + 14 on the built-in display).
+BAR_HEIGHT=38
+BAR_Y_OFFSET=8
+
+sketchybar --bar position=top height="$BAR_HEIGHT" notch_display_height="$BAR_HEIGHT" \
+  y_offset="$BAR_Y_OFFSET" margin=10 corner_radius=9 blur_radius=20 shadow=on \
+  color="$BAR_COLOR" border_color="$LINE" border_width=1 \
+  padding_left=10 padding_right=10 sticky=on topmost=off font_smoothing=on
+
+pill=(
+  background.color="$SURFACE"
+  background.border_color="$LINE"
+  background.border_width=1
+  background.corner_radius=7
+  background.height=24
+)
+
+default=(
+  updates=when_shown
+  padding_left=3
+  padding_right=3
+  icon.font="$FONT:Bold:14.0"
+  label.font="$FONT:Semibold:13.0"
+  icon.color="$FG"
+  label.color="$FG"
+  icon.padding_left=6
+  icon.padding_right=3
+  label.padding_left=3
+  label.padding_right=8
+  popup.background.color="$BG"
+  popup.background.border_color="$LINE"
+  popup.background.border_width=1
+  popup.background.corner_radius=9
+  popup.background.shadow.drawing=on
+  popup.blur_radius=20
+)
+sketchybar --default "${default[@]}"
+
+# Left
+
+popup_off="sketchybar --set apple.logo popup.drawing=off"
+sketchybar --add item apple.logo left \
+  --set apple.logo icon="$APPLE" icon.font="$FONT:Black:16.0" icon.color="$GREEN" \
+    label.drawing=off icon.padding_left=4 icon.padding_right=4 padding_right=10 \
+    click_script="sketchybar --set \$NAME popup.drawing=toggle" \
+  --add item apple.settings popup.apple.logo \
+  --set apple.settings icon="$GEAR" label="Settings" \
+    click_script="open -a 'System Settings'; $popup_off" \
+  --add item apple.activity popup.apple.logo \
+  --set apple.activity icon="$ACTIVITY" label="Activity" \
+    click_script="open -a 'Activity Monitor'; $popup_off" \
+  --add item apple.lock popup.apple.logo \
+  --set apple.lock icon="$LOCK" label="Lock Screen" \
+    click_script="pmset displaysleepnow; $popup_off"
+
+sketchybar --add event aerospace_workspace_change
+
+for ws in 1 2 3 4 5; do
+  sketchybar --add item "space.$ws" left \
+    --set "space.$ws" \
+      drawing=off \
+      icon="$ws" \
+      icon.font="$FONT:Bold:13.0" \
+      icon.padding_left=9 \
+      icon.padding_right=4 \
+      label.font="$APP_FONT" \
+      label.padding_left=2 \
+      label.padding_right=9 \
+      label.y_offset=-1 \
+      background.corner_radius=7 \
+      background.height=24 \
+      click_script="aerospace workspace $ws"
+done
+
+sketchybar --add item spaces_watcher left \
+  --set spaces_watcher drawing=off updates=on update_freq=10 script="$PLUGIN_DIR/aerospace.sh" \
+  --subscribe spaces_watcher aerospace_workspace_change front_app_switched space_windows_change system_woke
+
+sketchybar --add item front_app left \
+  --set front_app padding_left=10 icon.font="$APP_FONT" icon.color="$SAGE" label.color="$SAGE" \
+    script="$PLUGIN_DIR/front_app.sh" \
+  --subscribe front_app front_app_switched
+
+# Right: items are placed from the right edge inwards.
+
+sketchybar --add item clock right \
+  --set clock icon="$CALENDAR" icon.color="$DARK" label.color="$DARK" \
+    background.color="$SAGE" background.corner_radius=7 background.height=24 \
+    update_freq=30 script="$PLUGIN_DIR/clock.sh" \
+  --subscribe clock system_woke
+
+sketchybar --add item battery right \
+  --set battery "${pill[@]}" update_freq=120 script="$PLUGIN_DIR/battery.sh" \
+  --subscribe battery power_source_change system_woke
+
+sketchybar --add item cpu right \
+  --set cpu "${pill[@]}" icon="$CPU" icon.color="$TEAL" update_freq=5 script="$PLUGIN_DIR/cpu.sh"
+
+sketchybar --add item claude right \
+  --set claude "${pill[@]}" drawing=off updates=on icon="$TERMINAL" update_freq=10 script="$PLUGIN_DIR/claude.sh" \
+  --subscribe claude system_woke
+
+sketchybar --add item meeting right \
+  --set meeting "${pill[@]}" drawing=off updates=on icon="$VIDEO" icon.color="$PURPLE" update_freq=60 \
+    script="$PLUGIN_DIR/meeting.sh" \
+  --subscribe meeting system_woke
+
+sketchybar --update

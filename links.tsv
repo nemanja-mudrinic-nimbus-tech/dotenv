@@ -1,0 +1,22 @@
+# group	source (in ~/.dotfiles)	link (in ~)
+# Read by setup.sh (creates the links) and bin/doctor (checks them). "personal" links need setup.sh --personal.
+core	ghostty	.config/ghostty
+core	nvim	.config/nvim
+core	zsh/zshrc	.zshrc
+core	starship/starship.toml	.config/starship.toml
+core	atuin	.config/atuin
+core	lazygit/config.yml	Library/Application Support/lazygit/config.yml
+core	aerospace/aerospace.toml	.config/aerospace/aerospace.toml
+core	sketchybar	.config/sketchybar
+core	borders/bordersrc	.config/borders/bordersrc
+core	tmux.conf	.tmux.conf
+core	claude/CLAUDE.md	.claude/CLAUDE.md
+core	claude/settings.json	.claude/settings.json
+core	claude/skills/brain	.claude/skills/brain
+core	claude/skills/go-idioms	.claude/skills/go-idioms
+core	claude/skills/typescript-react	.claude/skills/typescript-react
+core	claude/skills/frontend	.claude/skills/frontend
+core	claude/skills/backend	.claude/skills/backend
+core	claude/skills/devops	.claude/skills/devops
+core	claude/skills/plannotator-tui	.claude/skills/plannotator-tui
+personal	claude/skills/sensei-deploy	.claude/skills/sensei-deploy

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+# Moss palette, 0xAARRGGBB.
+BG=0xf0151719
+SURFACE=0xff1e2124
+SELECTION=0xff242b26
+LINE=0xff272b29
+FG=0xffe2e5df
+MUTED=0xff80887f
+GREEN=0xff3fd468
+AMBER=0xffe6c07b
+RED=0xfff07a6f
+TEAL=0xff74d0b8
+PURPLE=0xffd3a6e0
+SAGE=0xffa8c4b4
+
+BAR_COLOR=0xe6151719
+DARK=0xff151719
+TRANSPARENT=0x00000000

@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+DOTFILES="$HOME/.dotfiles"
+PERSONAL=false
+[[ "${1:-}" == "--personal" || -f "$HOME/.config/dotfiles/personal.env" ]] && PERSONAL=true
+
+usage() {
+  cat <<'EOF'
+doctor — check that the dotfiles setup works on this Mac
+
+  doctor              every check; prints OK, FAIL with a fix, or SKIP
+  doctor --personal   also the personal checks (automatic when setup.sh --personal ran)
+
+Exit code 0 = no FAIL.
+EOF
+}
+[[ "${1:-}" == -h || "${1:-}" == --help ]] && { usage; exit 0; }
+
+if [[ -t 1 ]]; then G=$'\e[32m' R=$'\e[31m' Y=$'\e[33m' D=$'\e[2m' N=$'\e[0m'; else G="" R="" Y="" D="" N=""; fi
+fails=0
+ok()   { printf '  %sOK%s    %s\n' "$G" "$N" "$1"; }
+fail() { printf '  %sFAIL%s  %s\n        %sfix: %s%s\n' "$R" "$N" "$1" "$D" "$2" "$N"; fails=$((fails + 1)); }
+skip() { printf '  %sSKIP%s  %s\n' "$Y" "$N" "$1"; }
+section() { printf '\n%s\n' "$1"; }
+check() { local name="$1" fix="$2"; shift 2; if "$@" &> /dev/null; then ok "$name"; else fail "$name" "$fix"; fi; }
+
+font_installed() { compgen -G "/Library/Fonts/$1" || compgen -G "$HOME/Library/Fonts/$1"; }
+version_at_least() { [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" == "$2" ]]; }
+
+section "Homebrew"
+check "brew installed" "run ~/.dotfiles/setup.sh" command -v brew
+check "Brewfile complete" "brew bundle install --file ~/.dotfiles/Brewfile" brew bundle check --no-upgrade --file "$DOTFILES/Brewfile"
+if [[ "$PERSONAL" == true ]]; then
+  check "Brewfile.personal complete" "brew bundle install --file ~/.dotfiles/Brewfile.personal" brew bundle check --no-upgrade --file "$DOTFILES/Brewfile.personal"
+fi
+
+section "Links (links.tsv)"
+missing=()
+while IFS=$'\t' read -r group src dest; do
+  [[ -z "$group" || "$group" == \#* ]] && continue
+  [[ "$group" == personal && "$PERSONAL" != true ]] && continue
+  [[ "$(readlink "$HOME/$dest")" == "$DOTFILES/$src" ]] || missing+=("$dest")
+done < "$DOTFILES/links.tsv"
+while read -r skill; do
+  [[ -z "$skill" ]] && continue
+  [[ -L "$HOME/.claude/skills/$skill" ]] || missing+=(".claude/skills/$skill")
+done < "$DOTFILES/claude/skills-library/ACTIVE"
+if (( ${#missing[@]} == 0 )); then ok "all links point into ~/.dotfiles"; else fail "missing or wrong in your home folder: ${missing[*]}" "run ~/.dotfiles/setup.sh (it backs up existing files as *.backup)"; fi
+
+section "Shell"
+check "zsh is the login shell" "chsh -s /bin/zsh" test "$(dscl . -read "/Users/$USER" UserShell | awk '{print $2}')" = /bin/zsh
+check "Oh My Zsh" "run ~/.dotfiles/setup.sh" test -f "$HOME/.oh-my-zsh/oh-my-zsh.sh"
+for tool in starship atuin fzf zoxide eza bat rg fd lazygit direnv; do
+  check "$tool" "brew bundle install --file ~/.dotfiles/Brewfile" command -v "$tool"
+done
+check "Node.js (nvm)" "run ~/.dotfiles/setup.sh (installs nvm + Node LTS)" test -s "$HOME/.nvm/nvm.sh"
+
+section "Terminal and editor"
+check "Ghostty app" "brew install --cask ghostty" test -d /Applications/Ghostty.app
+check "BlexMono Nerd Font" "brew install --cask font-blex-mono-nerd-font" font_installed "BlexMonoNerdFontMono-*"
+check "tmux" "brew install tmux" command -v tmux
+plugins_missing=()
+while read -r plugin; do
+  [[ -d "$HOME/.tmux/plugins/${plugin#*/}" ]] || plugins_missing+=("$plugin")
+done < <(sed -n "s/^set -g @plugin '\(.*\)'/\1/p" "$DOTFILES/tmux.conf")
+if (( ${#plugins_missing[@]} == 0 )); then ok "tmux plugins"; else fail "tmux plugins missing: ${plugins_missing[*]}" "in tmux: prefix (Ctrl-a) then I"; fi
+if command -v nvim &> /dev/null; then
+  nv="$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+  if version_at_least "$nv" 0.12.0; then ok "nvim $nv"; else fail "nvim $nv is older than 0.12.0" "brew upgrade neovim"; fi
+  check "nvim plugins installed" "open nvim once; lazy.nvim installs them" test -d "$HOME/.local/share/nvim/lazy/LazyVim"
+else
+  fail "nvim" "brew install neovim"
+fi
+
+section "Desktop"
+check "AeroSpace app" "brew install --cask nikitabobko/tap/aerospace" test -d /Applications/AeroSpace.app
+check "AeroSpace running" "open -a AeroSpace, then allow it in System Settings → Privacy & Security → Accessibility" pgrep -x AeroSpace
+check "SketchyBar running" "brew services start sketchybar" pgrep -x sketchybar
+check "borders running" "brew services start borders" pgrep -x borders
+check "Maccy running" "open -a Maccy (Shift+Cmd+C opens it)" pgrep -x Maccy
+check "SF Pro font (bar)" "brew install --cask font-sf-pro" font_installed "SF-Pro-Display-*"
+check "app icon font (bar)" "brew install --cask font-sketchybar-app-font" font_installed "sketchybar-app-font*"
+
+section "Claude Code"
+if command -v claude &> /dev/null; then
+  ok "claude installed"
+  plugins="$(claude plugin list 2>/dev/null)"
+  for p in mattpocock-skills plannotator tmux-claude-hatch gopls-lsp typescript-lsp pyright-lsp; do
+    if grep -q "$p" <<<"$plugins"; then ok "plugin $p"; else fail "plugin $p" "run ~/.dotfiles/setup.sh (setup_dev_tooling)"; fi
+  done
+  check "Context7 MCP" "claude mcp add --transport http -s user context7 https://mcp.context7.com/mcp" claude mcp get context7
+else
+  fail "claude installed" "curl -fsSL https://claude.ai/install.sh | bash, then run setup.sh again"
+fi
+check "gitleaks pre-commit hook in ~/.dotfiles" "run ~/.dotfiles/setup.sh" grep -q gitleaks "$DOTFILES/.git/hooks/pre-commit"
+
+section "Personal"
+if [[ "$PERSONAL" == true ]]; then
+  # shellcheck source=/dev/null
+  [[ -f "$HOME/.config/dotfiles/personal.env" ]] && . "$HOME/.config/dotfiles/personal.env"
+  check "personal settings" "run ~/.dotfiles/setup.sh --personal" test -n "${OP_VAULT:-}"
+  check "1Password SSH agent config" "run ~/.dotfiles/setup.sh --personal" grep -q "vault = \"${OP_VAULT:-}\"" "$HOME/.config/1Password/ssh/agent.toml"
+  check "1Password CLI reaches the app" "1Password app → Settings → Developer → 'Integrate with 1Password CLI'" op vault list
+  sock="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+  if [[ -S "$sock" ]] && SSH_AUTH_SOCK="$sock" ssh-add -l &> /dev/null; then ok "1Password SSH agent has keys"
+  else fail "1Password SSH agent has keys" "1Password app → Settings → Developer → 'Use the SSH agent'; keys in vault '${OP_VAULT:-Private}' (~/.config/dotfiles/personal.env)"; fi
+  check "gitid profiles (private, outside the repo)" "gitid restore" test -f "$HOME/.config/gitid/profiles.tsv"
+  check "gitid rules included" "gitid apply" bash -c "git config --global --get-all include.path | grep -q gitid"
+  check "git refuses commits outside known folders" "gitid apply" test "$(git config --global user.useConfigOnly)" = true
+else
+  skip "personal checks (run: doctor --personal)"
+fi
+
+printf '\n'
+if (( fails == 0 )); then printf '%sAll checks passed.%s\n' "$G" "$N"; else printf '%s%d check(s) failed.%s\n' "$R" "$fails" "$N"; fi
+(( fails == 0 ))

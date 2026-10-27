@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BRAIN_HOME="${BRAIN_HOME:-$HOME/.local/share/brain}"
+VAULT_PROJECTS="$HOME/vault/projects"
+
+usage() {
+  cat <<'EOF'
+brain — per-project code graph (graphify) for Claude, stored in ~/.local/share/brain/<slug>/
+
+  brain on <slug> [root]      enable for an engagement root (default: current dir)
+  brain update <slug>|.|--all [--force]
+                               refresh the graph (AST only, free); "." = project of current dir;
+                               --force after shrinking scope (graphify refuses smaller graphs)
+  brain rebuild <slug>|.       fresh build from scratch — use after changing .graphifyignore
+                               (update only merges: removed/ignored files never drop out)
+  brain off <slug>|. [--purge] disable; --purge also deletes the stored graph
+  brain status                 projects with a brain: graph age, size, MCP state
+  brain status --all           every vault project: brain on / off(kept) / —, and its code folder
+  brain open [slug]            open graph.html in the browser (default: current project)
+  brain report [slug]          read GRAPH_REPORT.md in nvim (default: current project)
+
+Nothing tracked is written into repos: the graph lives outside the vault and repos,
+<root>/graphify-out is a git-excluded symlink, the MCP is local scope in ~/.claude.json.
+If <root> is a repo with a tracked CLAUDE.md, the pointer line goes into the parent
+folder's CLAUDE.md (Claude reads parent CLAUDE.md files) and the MCP is registered in both.
+EOF
+}
+
+die() { echo "brain: $*" >&2; exit 1; }
+
+without_llm_keys() {
+  env -u GEMINI_API_KEY -u GOOGLE_API_KEY -u OPENAI_API_KEY -u ANTHROPIC_API_KEY "$@"
+}
+
+slug_dir() { echo "$BRAIN_HOME/$1"; }
+
+resolve_slug() {
+  local target="$1"
+  if [[ "$target" != "." && "$target" != /* && "$target" != ./* ]]; then
+    echo "$target"; return 0
+  fi
+  local path best="" best_len=0 f root
+  path="$(cd "$target" && pwd -P)"
+  for f in "$BRAIN_HOME"/*/root; do
+    [[ -f "$f" ]] || continue
+    root="$(cat "$f")"
+    if [[ "$path" == "$root" || "$path" == "$root"/* ]] && (( ${#root} > best_len )); then
+      best="$(basename "$(dirname "$f")")"; best_len=${#root}
+    fi
+  done
+  [[ -n "$best" ]] || die "no brain project contains $path"
+  echo "$best"
+}
+
+root_of() {
+  local file; file="$(slug_dir "$1")/root"
+  [[ -f "$file" ]] || die "'$1' is not enabled (no $file)"
+  cat "$file"
+}
+
+built_date() {
+  local graph="$1/graphify-out/graph.json"
+  [[ -f "$graph" ]] && stat -f %Sm -t %Y-%m-%d "$graph" || echo "never"
+}
+
+exclude_in_repo() {
+  local root="$1"; shift
+  is_repo_root "$root" || return 0
+  local exclude="$root/.git/info/exclude" entry
+  for entry in "$@"; do
+    grep -qxF "$entry" "$exclude" 2>/dev/null || echo "$entry" >> "$exclude"
+  done
+}
+
+write_default_ignore() {
+  local root="$1"
+  [[ -e "$root/.graphifyignore" ]] && return 0
+  cat > "$root/.graphifyignore" <<'EOF'
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+.next/
+.nuxt/
+target/
+vendor/
+coverage/
+.terraform/
+*.min.js
+*.map
+*.lock
+EOF
+}
+
+is_repo_root() { [[ "$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" == "$1" ]]; }
+
+pointer_dir() {
+  local root="$1" parent
+  if is_repo_root "$root" && git -C "$root" ls-files --error-unmatch CLAUDE.md >/dev/null 2>&1; then
+    parent="$(dirname "$root")"
+    git -C "$parent" rev-parse --show-toplevel >/dev/null 2>&1 && die "$root has a tracked CLAUDE.md and its parent is inside a repo — no safe place for the pointer"
+    echo "$parent"
+  else
+    echo "$root"
+  fi
+}
+
+mcp_dirs() {
+  local root="$1" pdir; pdir="$(pointer_dir "$root")"
+  echo "$root"
+  [[ "$pdir" != "$root" ]] && echo "$pdir"
+  return 0
+}
+
+set_pointer_line() {
+  local slug="$1" root="$2" line="$3"
+  local md; md="$(pointer_dir "$root")/CLAUDE.md"
+  [[ -f "$md" ]] || echo "Vault: ~/vault/projects/$slug/index.md" > "$md"
+  grep -q '^Vault: ' "$md" || printf '\nVault: ~/vault/projects/%s/index.md\n' "$slug" >> "$md"
+  sed -i '' '/^Second brain: /d' "$md"
+  [[ -n "$line" ]] && echo "$line" >> "$md"
+  return 0
+}
+
+build() {
+  local root="$1" force="${2:-}"
+  if [[ "$force" == "--force" ]]; then
+    (cd "$root" && GRAPHIFY_FORCE=1 without_llm_keys graphify update . --force)
+  else
+    (cd "$root" && without_llm_keys graphify update .)
+  fi
+}
+
+register_mcp() {
+  local root="$1" graph="$2" d
+  while read -r d; do
+    (cd "$d" && claude mcp remove -s local graphify >/dev/null 2>&1 || true)
+    (cd "$d" && claude mcp add -s local graphify -- "$(command -v graphify-mcp)" "$graph" >/dev/null)
+  done < <(mcp_dirs "$root")
+}
+
+unregister_mcp() {
+  local root="$1" d
+  while read -r d; do
+    (cd "$d" && claude mcp remove -s local graphify >/dev/null 2>&1 || true)
+  done < <(mcp_dirs "$root")
+}
+
+cmd_on() {
+  local slug="${1:-}" root="${2:-$PWD}"
+  [[ -n "$slug" ]] || die "usage: brain on <slug> [root]"
+  root="$(cd "$root" && pwd -P)"
+  [[ -d "$VAULT_PROJECTS/$slug" ]] || echo "brain: note — no vault project '$slug' yet ($VAULT_PROJECTS/$slug)"
+
+  local dir out; dir="$(slug_dir "$slug")"; out="$dir/graphify-out"
+  mkdir -p "$dir"
+
+  if [[ -d "$root/graphify-out" && ! -L "$root/graphify-out" ]]; then
+    [[ -e "$out" ]] && die "both $root/graphify-out and $out exist — resolve manually"
+    echo "brain: moving existing graph into the vault…"
+    mv "$root/graphify-out" "$out"
+  elif [[ -L "$root/graphify-out" && "$(readlink "$root/graphify-out")" != "$out" ]]; then
+    [[ -e "$root/graphify-out" ]] && die "$root/graphify-out is a symlink to somewhere else"
+    rm "$root/graphify-out"
+  fi
+  mkdir -p "$out"
+  ln -sfn "$out" "$root/graphify-out"
+  echo "$root" > "$dir/root"
+
+  write_default_ignore "$root"
+  if is_repo_root "$root" && git -C "$root" ls-files --error-unmatch CLAUDE.md >/dev/null 2>&1; then
+    exclude_in_repo "$root" graphify-out .graphifyignore
+  else
+    exclude_in_repo "$root" graphify-out CLAUDE.md .graphifyignore
+  fi
+
+  echo "brain: building graph for $root (AST only)…"
+  build "$root"
+  register_mcp "$root" "$out/graph.json"
+  set_pointer_line "$slug" "$root" "$(pointer_line "$slug" "$dir")"
+  echo "brain: on — $slug → $root (built $(built_date "$dir"))"
+}
+
+pointer_line() {
+  echo "Second brain: on — graph ${BRAIN_HOME/#$HOME/\~}/$1/graphify-out/graph.json (built $(built_date "$2")). Refresh: \`brain update $1\`"
+}
+
+cmd_update() {
+  local target="${1:-}" force="${2:-}"
+  [[ -n "$target" ]] || die "usage: brain update <slug>|--all"
+  if [[ "$target" == "--all" ]]; then
+    local d
+    for d in "$BRAIN_HOME"/*/root; do
+      [[ -f "$d" ]] && cmd_update "$(basename "$(dirname "$d")")" "$force"
+    done
+    return 0
+  fi
+  target="$(resolve_slug "$target")"
+  local root dir; root="$(root_of "$target")"; dir="$(slug_dir "$target")"
+  echo "brain: updating $target ($root)${force:+ (forced)}…"
+  build "$root" "$force"
+  set_pointer_line "$target" "$root" "$(pointer_line "$target" "$dir")"
+  echo "brain: $target built $(built_date "$dir")"
+}
+
+cmd_off() {
+  local slug="${1:-}" purge="${2:-}"
+  [[ -n "$slug" ]] || die "usage: brain off <slug> [--purge]"
+  slug="$(resolve_slug "$slug")"
+  local root dir; root="$(root_of "$slug")"; dir="$(slug_dir "$slug")"
+  unregister_mcp "$root"
+  local md; md="$(pointer_dir "$root")/CLAUDE.md"
+  [[ -f "$md" ]] && sed -i '' '/^Second brain: /d' "$md"
+  [[ -L "$root/graphify-out" ]] && rm "$root/graphify-out"
+  rm -f "$dir/root"
+  if [[ "$purge" == "--purge" ]]; then
+    rm -rf "$dir"
+    echo "brain: off — $slug (graph deleted)"
+  else
+    echo "brain: off — $slug (graph kept in $dir; 'brain on $slug $root' re-enables)"
+  fi
+}
+
+mcp_state() {
+  local root="$1"
+  jq -r --arg r "$root" '.projects[$r].mcpServers.graphify // empty | if . then "mcp:on" else "mcp:off" end' "$HOME/.claude.json" 2>/dev/null | grep . || echo "mcp:off"
+}
+
+cmd_status() {
+  local found=0 f slug dir root nodes size
+  printf '%-14s %-11s %-7s %-9s %-26s %s\n' SLUG BUILT SIZE MCP NODES ROOT
+  for f in "$BRAIN_HOME"/*/root; do
+    [[ -f "$f" ]] || continue
+    found=1
+    dir="$(dirname "$f")"; slug="$(basename "$dir")"; root="$(cat "$f")"
+    size="$(du -sh "$dir" 2>/dev/null | cut -f1)"
+    nodes="$(grep -m1 -oE '[0-9]+ nodes · [0-9]+ edges' "$dir/graphify-out/GRAPH_REPORT.md" 2>/dev/null || echo '-')"
+    printf '%-14s %-11s %-7s %-9s %-26s %s\n' "$slug" "$(built_date "$dir")" "$size" "$(mcp_state "$root")" "$nodes" "$root"
+  done
+  [[ $found == 1 ]] || echo "(no projects enabled — 'brain on <slug>' in an engagement root)"
+}
+
+cmd_rebuild() {
+  local slug="${1:-}" root
+  [[ -n "$slug" ]] || die "usage: brain rebuild <slug>|."
+  slug="$(resolve_slug "$slug")"; root="$(root_of "$slug")"
+  echo "brain: fresh rebuild of $slug (drops files that are now ignored or deleted)…"
+  cmd_off "$slug" --purge >/dev/null
+  cmd_on "$slug" "$root"
+}
+
+cmd_status_all() {
+  local proj slug f roots state built dir
+  printf '%-24s %-10s %-11s %s\n' PROJECT BRAIN BUILT "CODE FOLDER (from CLAUDE.md pointers)"
+  for proj in "$HOME"/vault/projects/*/; do
+    slug="$(basename "$proj")"
+    roots="$( { rg -l --max-depth 4 -g 'CLAUDE.md' "^Vault: ~/vault/projects/$slug/index.md" "$HOME/Documents" 2>/dev/null || true; } | while read -r f; do dirname "$f"; done | sed "s|$HOME|~|" | paste -sd ' ' - || true)"
+    dir="$(slug_dir "$slug")"
+    if [[ -f "$dir/root" ]]; then state="on"; built="$(built_date "$dir")"
+    elif [[ -d "$dir/graphify-out" ]]; then state="off(kept)"; built="$(built_date "$dir")"
+    else state="-"; built="-"; fi
+    printf '%-24s %-10s %-11s %s\n' "$slug" "$state" "$built" "${roots:-(no pointer)}"
+  done
+}
+
+cmd_open() {
+  local slug dir; slug="$(resolve_slug "${1:-.}")"; root_of "$slug" >/dev/null; dir="$(slug_dir "$slug")"
+  open "$dir/graphify-out/graph.html"
+}
+
+cmd_report() {
+  local slug dir; slug="$(resolve_slug "${1:-.}")"; root_of "$slug" >/dev/null; dir="$(slug_dir "$slug")"
+  nvim -R "$dir/graphify-out/GRAPH_REPORT.md"
+}
+
+case "${1:-help}" in
+  on)     shift; cmd_on "$@" ;;
+  update) shift; cmd_update "$@" ;;
+  off)    shift; cmd_off "$@" ;;
+  rebuild) shift; cmd_rebuild "$@" ;;
+  status) if [[ "${2:-}" == "--all" ]]; then cmd_status_all; else cmd_status; fi ;;
+  open)   shift; cmd_open "$@" ;;
+  report) shift; cmd_report "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# JankyBorders — see `man borders`. Moss palette: active green, inactive line colour.
+
+options=(
+  style=round
+  width=5.0
+  hidpi=on
+  active_color=0xff3fd468
+  inactive_color=0xff272b29
+)
+
+borders "${options[@]}"

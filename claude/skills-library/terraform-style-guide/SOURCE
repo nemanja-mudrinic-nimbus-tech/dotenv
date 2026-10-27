@@ -1,0 +1,4 @@
+repo: hashicorp/agent-skills
+path: plugins/terraform/skills/terraform-style-guide
+commit: f706481
+fetched: 2026-10-26

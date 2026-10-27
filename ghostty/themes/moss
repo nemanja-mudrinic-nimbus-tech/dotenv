@@ -1,0 +1,25 @@
+# Moss — neutral near-black with green, no blue (palette A3).
+# Matches tmux.conf and the nvim colorscheme (tokyonight engine, moss colors).
+background = #151719
+foreground = #e2e5df
+cursor-color = #3fd468
+cursor-text = #151719
+selection-background = #242b26
+selection-foreground = #e2e5df
+
+palette = 0=#1f2225
+palette = 1=#f07a6f
+palette = 2=#3fd468
+palette = 3=#e6c07b
+palette = 4=#a8c4b4
+palette = 5=#d3a6e0
+palette = 6=#74d0b8
+palette = 7=#e2e5df
+palette = 8=#50574f
+palette = 9=#f69b92
+palette = 10=#6fe08a
+palette = 11=#f0d39b
+palette = 12=#c0d6c9
+palette = 13=#e2c2ec
+palette = 14=#98e0cd
+palette = 15=#f3f5f1

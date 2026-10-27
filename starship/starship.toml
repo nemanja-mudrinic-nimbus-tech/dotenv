@@ -1,0 +1,64 @@
+# Moss prompt, omerxx style: folder + arrow on the left, everything else on the right.
+"$schema" = 'https://starship.rs/config-schema.json'
+palette = "moss"
+add_newline = false
+format = "$directory$character"
+right_format = "$git_branch$git_status$cmd_duration$kubernetes$golang$nodejs$python$aws"
+
+[palettes.moss]
+bg = "#151719"
+fg = "#e2e5df"
+muted = "#80887f"
+green = "#3fd468"
+amber = "#e6c07b"
+red = "#f07a6f"
+teal = "#74d0b8"
+purple = "#d3a6e0"
+sage = "#a8c4b4"
+
+[directory]
+style = "bold green"
+truncation_length = 3
+truncate_to_repo = true
+read_only = " ro"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style = "purple"
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+style = "amber"
+
+[kubernetes]
+disabled = false
+format = "[⎈ $context]($style) "
+style = "teal"
+
+[character]
+success_symbol = "[➜](bold green)"
+error_symbol = "[➜](bold red)"
+vimcmd_symbol = "[❮](amber)"
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration]($style) "
+style = "muted"
+
+[golang]
+format = "[ $version]($style) "
+style = "teal"
+
+[nodejs]
+format = "[ $version]($style) "
+style = "green"
+detect_files = ["package.json"]
+
+[python]
+format = "[ $version( $virtualenv)]($style) "
+style = "amber"
+
+[aws]
+format = "[ $profile]($style) "
+style = "amber"

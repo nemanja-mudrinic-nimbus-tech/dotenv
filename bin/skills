@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LIB="$HOME/.dotfiles/claude/skills-library"
+ACTIVE="$HOME/.claude/skills"
+LIST="$LIB/ACTIVE"
+
+usage() {
+  cat <<'EOF'
+skills — library of open-source Claude skills: fetch, read, switch on/off
+
+  skills ls                          every skill in the library, ● = active
+  skills get <owner/repo> <path> <name>   fetch a skill folder from GitHub into the library (inactive)
+  skills on <name>                   activate (link into ~/.claude/skills)
+  skills off <name>                  deactivate (remove the link, keep the files)
+  skills read <name>                 open its SKILL.md in nvim
+
+Library: ~/.dotfiles/claude/skills-library/<name>/ (+ SOURCE with repo, path, commit). Active list: ACTIVE (setup.sh restores it). Shortlist: CANDIDATES.md.
+EOF
+}
+
+die() { echo "skills: $*" >&2; exit 1; }
+
+get() {
+  local repo="${1:?owner/repo}" path="${2:?path}" name="${3:?name}" tmp sha
+  [[ -e "$LIB/$name" ]] && die "$name already in the library"
+  tmp="$(mktemp -d)"
+  git clone -q --depth 1 --filter=blob:none --sparse "https://github.com/$repo.git" "$tmp"
+  git -C "$tmp" sparse-checkout set --no-cone "/$path/"
+  [[ -f "$tmp/$path/SKILL.md" ]] || { rm -rf "$tmp"; die "no SKILL.md at $repo/$path"; }
+  sha="$(git -C "$tmp" rev-parse --short HEAD)"
+  mkdir -p "$LIB"
+  cp -R "$tmp/$path" "$LIB/$name"
+  printf 'repo: %s\npath: %s\ncommit: %s\nfetched: %s\n' "$repo" "$path" "$sha" "$(date +%F)" > "$LIB/$name/SOURCE"
+  rm -rf "$tmp"
+  echo "fetched $name ($repo@$sha) — inactive. Read: skills read $name · activate: skills on $name"
+}
+
+on() {
+  local name="${1:?name}"
+  [[ -d "$LIB/$name" ]] || die "$name is not in the library"
+  [[ -e "$ACTIVE/$name" && ! -L "$ACTIVE/$name" ]] && die "$ACTIVE/$name exists and is not a library link"
+  ln -sfn "$LIB/$name" "$ACTIVE/$name"
+  { cat "$LIST" 2>/dev/null; echo "$name"; } | sort -u > "$LIST.tmp" && mv "$LIST.tmp" "$LIST"
+  echo "active: $name"
+}
+
+off() {
+  local name="${1:?name}"
+  [[ -L "$ACTIVE/$name" ]] || die "$name is not active"
+  rm "$ACTIVE/$name"
+  grep -vx "$name" "$LIST" > "$LIST.tmp" || true; mv "$LIST.tmp" "$LIST"
+  echo "inactive: $name"
+}
+
+list() {
+  local d name mark
+  for d in "$LIB"/*/; do
+    [[ -d "$d" ]] || continue
+    name="$(basename "$d")"
+    mark=" "; [[ -L "$ACTIVE/$name" ]] && mark="●"
+    printf '%s %-28s %s\n' "$mark" "$name" "$(sed -n 's/^repo: //p' "$d/SOURCE" 2>/dev/null)"
+  done
+}
+
+case "${1:-}" in
+  ls) list ;;
+  get) shift; get "$@" ;;
+  on) shift; on "$@" ;;
+  off) shift; off "$@" ;;
+  read) shift; nvim -R "$LIB/${1:?name}/SKILL.md" ;;
+  -h|--help|help|"") usage ;;
+  *) usage; exit 1 ;;
+esac

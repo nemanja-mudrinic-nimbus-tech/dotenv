@@ -1,0 +1,69 @@
+# Nemanja's work tools, installed by setup.sh --personal on top of Brewfile.
+def app?(name) = File.exist?("/Applications/#{name}.app")
+
+# Secrets: 1Password CLI (secret-put, gitid backup, sensei, SSH agent setup)
+cask "1password-cli"
+
+# Languages and build
+brew "go"
+brew "gopls"
+brew "golangci-lint"
+brew "pnpm"
+brew "make"
+brew "cmake"
+brew "maven"
+brew "cocoapods"
+brew "stylua"
+
+# Data
+brew "postgresql@16"
+brew "mysql-client"
+brew "mongosh"
+brew "dbmate"
+brew "unixodbc"
+
+# Kubernetes, GitOps, infrastructure
+brew "kubectx"
+brew "helm"
+brew "argocd"
+brew "kubeseal"
+brew "minikube"
+brew "crane"
+brew "opentofu"
+brew "tfenv"
+brew "terragrunt"
+brew "sops"
+brew "age"
+
+# Cloud CLIs
+brew "awscli"
+brew "aws-sam-cli"
+brew "azure-cli"
+brew "oci-cli"
+brew "doctl"
+cask "gcloud-cli"
+
+# Testing, security, debugging
+brew "k6"
+brew "semgrep"
+brew "shellharden"
+brew "websocat"
+brew "logdy"
+brew "caddy"
+brew "temporal"
+
+# Utilities
+brew "cocogitto"
+brew "tldr"
+brew "yazi"
+brew "unar"
+brew "poppler"
+brew "mas"
+brew "openfortivpn"
+cask "ngrok"
+
+# Apps
+cask "android-studio" unless app?("Android Studio")
+cask "drawio" unless app?("draw.io")
+cask "librewolf" unless app?("LibreWolf")
+cask "warp" unless app?("Warp")

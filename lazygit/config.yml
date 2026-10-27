@@ -1,0 +1,30 @@
+# Moss colours (same palette as Ghostty, tmux and nvim)
+gui:
+  nerdFontsVersion: "3"
+  theme:
+    activeBorderColor:
+      - "#3fd468"
+      - bold
+    inactiveBorderColor:
+      - "#50574f"
+    searchingActiveBorderColor:
+      - "#e6c07b"
+      - bold
+    optionsTextColor:
+      - "#a8c4b4"
+    selectedLineBgColor:
+      - "#242b26"
+    inactiveViewSelectedLineBgColor:
+      - "#1e2124"
+    cherryPickedCommitFgColor:
+      - "#74d0b8"
+    cherryPickedCommitBgColor:
+      - "#242b26"
+    markedBaseCommitFgColor:
+      - "#e6c07b"
+    markedBaseCommitBgColor:
+      - "#242b26"
+    unstagedChangesColor:
+      - "#f07a6f"
+    defaultFgColor:
+      - "#e2e5df"

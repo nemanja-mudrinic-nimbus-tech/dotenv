@@ -1,0 +1,126 @@
+# AeroSpace — tiling window manager. Docs: https://nikitabobko.github.io/AeroSpace/guide
+# Alt bindings are global. Alt+B/F/D/Y/./Backspace/arrows stay free for zsh and Claude Code line editing.
+
+config-version = 2
+
+start-at-login = true
+auto-reload-config = true
+
+after-startup-command = [
+    'exec-and-forget pgrep -x sketchybar >/dev/null || sketchybar',
+    'exec-and-forget pgrep -x borders >/dev/null || borders',
+]
+
+exec-on-workspace-change = ['/bin/bash', '-c',
+    'sketchybar --trigger aerospace_workspace_change FOCUSED_WORKSPACE=$AEROSPACE_FOCUSED_WORKSPACE'
+]
+
+enable-normalization-flatten-containers = true
+enable-normalization-opposite-orientation-for-nested-containers = true
+
+accordion-padding = 30
+default-root-container-layout = 'tiles'
+default-root-container-orientation = 'auto'
+
+on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
+automatically-unhide-macos-hidden-apps = false
+
+persistent-workspaces = ["1", "2", "3", "4", "5"]
+
+key-mapping.preset = 'qwerty'
+
+[exec.env-vars]
+    PATH = '/opt/homebrew/bin:/opt/homebrew/sbin:${PATH}'
+
+# The built-in display keeps its notch strip out of the window area, so SketchyBar fits there.
+# Other monitors need room for the 32 px bar.
+[gaps]
+    inner.horizontal = 8
+    inner.vertical = 8
+    outer.left = 8
+    outer.bottom = 8
+    outer.top = [{ monitor."built-in" = 14 }, 54]
+    outer.right = 8
+
+[mode.main.binding]
+    alt-h = 'focus left'
+    alt-j = 'focus down'
+    alt-k = 'focus up'
+    alt-l = 'focus right'
+
+    alt-shift-h = 'move left'
+    alt-shift-j = 'move down'
+    alt-shift-k = 'move up'
+    alt-shift-l = 'move right'
+
+    alt-1 = 'workspace 1'
+    alt-2 = 'workspace 2'
+    alt-3 = 'workspace 3'
+    alt-4 = 'workspace 4'
+    alt-5 = 'workspace 5'
+
+    alt-shift-1 = 'move-node-to-workspace 1'
+    alt-shift-2 = 'move-node-to-workspace 2'
+    alt-shift-3 = 'move-node-to-workspace 3'
+    alt-shift-4 = 'move-node-to-workspace 4'
+    alt-shift-5 = 'move-node-to-workspace 5'
+
+    alt-tab = 'workspace-back-and-forth'
+
+    # Two screens: focus the other screen · send this workspace there · send this window there (focus follows)
+    alt-m = 'focus-monitor --wrap-around next'
+    alt-shift-m = 'move-workspace-to-monitor --wrap-around next'
+    alt-shift-n = 'move-node-to-monitor --wrap-around --focus-follows-window next'
+
+    # Dia next to you / back to workspace 2 (one key, both directions)
+    alt-shift-d = 'exec-and-forget ~/.dotfiles/bin/aero-summon company.thebrowser.dia 2'
+
+    alt-slash = 'layout tiles horizontal vertical'
+    alt-comma = 'layout accordion horizontal vertical'
+    alt-shift-f = 'fullscreen'
+    alt-shift-space = 'layout floating tiling'
+
+    alt-minus = 'resize smart -50'
+    alt-equal = 'resize smart +50'
+
+    alt-shift-t = 'exec-and-forget open -a Ghostty'
+    alt-shift-b = 'exec-and-forget open -a Dia'
+
+    alt-shift-semicolon = 'mode service'
+
+[mode.service.binding]
+    esc = ['reload-config', 'mode main']
+    r = ['flatten-workspace-tree', 'mode main']
+    backspace = ['close-all-windows-but-current', 'mode main']
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = com.apple.finder'
+    run = 'layout floating'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = com.apple.systempreferences'
+    run = 'layout floating'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = com.1password.1password'
+    run = 'layout floating'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = org.p0deje.Maccy'
+    run = 'layout floating'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = com.mitchellh.ghostty'
+    run = 'move-node-to-workspace 1'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = company.thebrowser.dia || test %{app-bundle-id} = com.google.Chrome'
+    run = 'move-node-to-workspace 2'
+
+[[on-window-detected]]
+    if = 'test %{app-bundle-id} = com.tinyspeck.slackmacgap'
+    run = 'move-node-to-workspace 3'
+
+# Workspace 1 (terminal) lives on the external screen when one is connected, else on the laptop
+[workspace-to-monitor-force-assignment]
+    1 = ['secondary', 'main']

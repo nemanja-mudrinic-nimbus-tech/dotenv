@@ -1,0 +1,4 @@
+# folder (and everything below it)	profile — first match wins, so list deeper folders first
+~/Documents/acme	acme
+~/Documents	personal
+~/.dotfiles	personal

@@ -1,0 +1,12 @@
+accessibility
+core-web-vitals
+docker-build-strategies
+docker-compose-patterns
+fastapi
+github-actions-hardening
+playwright-cli
+shadcn
+tanstack-router-core
+tanstack-router-query
+terraform-style-guide
+terraform-test

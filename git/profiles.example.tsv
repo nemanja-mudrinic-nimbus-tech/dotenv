@@ -1,0 +1,3 @@
+# profile	name	email	ssh key in ~/.ssh (a .pub file lets the 1Password SSH agent supply the private key)
+personal	Jane Doe	jane@example.com	id_personal.pub
+acme	Jane Doe	jane.doe@acme.example	id_acme.pub
