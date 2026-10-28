@@ -12,9 +12,10 @@ FONT="SF Pro"
 # Keep it at the same version as the font-sketchybar-app-font cask.
 APP_FONT="sketchybar-app-font:Regular:15.0"
 
-# omerxx size. The bar must end above the AeroSpace window gap (outer.top: 54 px on external monitors, notch strip + 14 on the built-in display).
+# omerxx size. The bar must end above the AeroSpace window gap (outer.top: 54 on external monitors,
+# notch strip + 14 on the built-in display). It ends at y_offset + height = 40, so both have room.
 BAR_HEIGHT=38
-BAR_Y_OFFSET=8
+BAR_Y_OFFSET=2
 
 sketchybar --bar position=top height="$BAR_HEIGHT" notch_display_height="$BAR_HEIGHT" \
   y_offset="$BAR_Y_OFFSET" margin=10 corner_radius=9 blur_radius=20 shadow=on \
