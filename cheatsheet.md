@@ -398,6 +398,27 @@ Guide: `~/vault/projects/dev-setup/guides/sqmeow-databases.md`
 | Kali files on the Mac | `~/OrbStack/kali/home/<you>/…` |
 | `docker …` | Runs on OrbStack (Docker Desktop is gone) |
 
+### Switching between OrbStack and Docker Desktop
+
+Both give you a `docker` command, and both write to the same places. The one you install last wins, and the one you remove leaves parts behind. Check these after a switch in either direction.
+
+| What breaks | How you see it | Fix |
+|---|---|---|
+| Credential helper | `docker pull` says `docker-credential-desktop: executable file not found` | `~/.docker/config.json` → set `"credsStore": "osxkeychain"` for OrbStack, `"desktop"` for Docker Desktop |
+| Context | `cannot connect to the Docker daemon` | `docker context use orbstack` (or `desktop-linux`). `docker context ls` shows both |
+| CLI plugins | `docker buildx` or `docker compose` not found, or a plugin warning | `~/.docker/cli-plugins/` holds a symlink per plugin. Delete the ones that point at the app you removed |
+| Shell completions | `compinit: no such file or directory: …/_docker` in every new shell | Delete the dead link in `$(brew --prefix)/share/zsh/site-functions`, then `rm -f ~/.zcompdump*` |
+| `/usr/local/bin` | `hub-tool`, `kubectl.docker`, `docker-index` and `docker-credential-*` point at nothing | `sudo rm` the dead links. Keep `docker`, `docker-compose` and `docker-credential-osxkeychain` |
+| Privileged helper | A launch daemon starts at every boot for an app that is gone | `sudo launchctl bootout system/com.docker.vmnetd`, then `sudo rm` `/Library/LaunchDaemons/com.docker.*.plist` and `/Library/PrivilegedHelperTools/com.docker.*` |
+| `daemon.json` | A setting does nothing | `~/.docker/daemon.json` belongs to Docker Desktop. OrbStack reads its own settings; use `orb config` |
+| Kubernetes | `kubectl` talks to the wrong cluster | `kubectl config get-contexts`, then delete the `docker-desktop` context or the OrbStack one |
+
+**Images and volumes do not move.** Each product keeps them in its own Linux VM. Before you switch, `docker save` the images you need and back up the volumes, or pull and build again afterwards. OrbStack can import a Docker Desktop installation on first start; it does not work the other way.
+
+**Both can be installed at the same time**, but only one may own `/var/run/docker.sock`. On this Mac it points at `~/.orbstack/run/docker.sock`, so Testcontainers and anything else with a hardcoded socket path works without `DOCKER_HOST`.
+
+`doctor` catches the shell-completion part. The rest is a check by hand.
+
 Inside Kali, tmux + nvim use the same dotfiles (symlinked). Nested tmux: `C-a C-a` reaches the inner one.
 Guide + learning links: `~/vault/projects/dev-setup/guides/kali-orbstack.md`
 

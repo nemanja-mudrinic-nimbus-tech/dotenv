@@ -96,7 +96,7 @@ The rules and skills are written for the repo owner's way of working. Read them 
 
 `setup.sh --personal` adds the repo owner's private parts. Other people do not need it. It uses 1Password:
 - the 1Password CLI and work tools (`Brewfile.personal`)
-- a container runtime (OrbStack) — a personal choice rather than part of the setup; swap for Docker Desktop, Colima or Podman
+- a container runtime (OrbStack) — a personal choice rather than part of the setup; swap for Docker Desktop, Colima or Podman. Swapping leaves parts of the old one behind: `cheatsheet.md` → "Switching between OrbStack and Docker Desktop"
 - the 1Password vault name and the `sensei` Coolify domain, in `~/.config/dotfiles/personal.env` (not in git)
 - the 1Password SSH agent config
 - git identities per folder, restored from 1Password into `~/.config/gitid/` (not in git)
