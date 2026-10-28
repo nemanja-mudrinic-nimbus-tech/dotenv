@@ -309,7 +309,7 @@ The picker opens ready to type — the ⌥ toggles work while typing too (Ghostt
 |---|---|
 | `Esc` | Goes back / cancels inside lazygit — also in nvim (`Space gg`), fixed 2026-10-26 |
 | Commit message editor opens nvim inside lazygit (`C`) | Write, then `:wq`; or use `c` for a one-line message |
-| Wrong author on the commit | `git config user.email` in that repo — the identity follows the folder (gitid, planned) |
+| Wrong author on the commit | Run `gitid` in that folder — it prints the identity git uses and where it comes from. `gitid set` maps the folder to a profile |
 
 ---
 
@@ -700,8 +700,9 @@ Do these once:
 1. Open AeroSpace with `open -a AeroSpace`.
 2. Give AeroSpace access in System Settings → Privacy & Security → Accessibility.
 3. Run `~/.dotfiles/macos/defaults.sh`. It hides the Dock and the menu bar, turns off separate Spaces per display, and groups windows by app in Mission Control.
-4. Log out and log in again.
-5. Open Maccy → Settings → turn on "Launch at login".
+4. Log out and log in again. Until you do steps 3 and 4, the macOS menu bar covers SketchyBar and you see no bar.
+5. Check that Maccy starts at login: `doctor` has a line for it. `setup.sh` adds the login item. If macOS blocked it, open Maccy → Settings → turn on "Launch at login".
+6. Install the bar font: `brew install --cask font-sf-pro`. It asks for your password, so `setup.sh` cannot do it. Without it the bar text falls back to another font.
 
 Configs: `~/.dotfiles/aerospace/`, `sketchybar/`, `borders/`, `macos/defaults.sh`.
 

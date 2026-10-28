@@ -46,10 +46,11 @@ A person who cloned the repo can start Claude Code in `~/.dotfiles` and type:
    - An existing file at a link location is moved to `<file>.backup`. Tell the person which files were moved.
 5. Give the person the steps that only a human can do:
    1. **AeroSpace:** System Settings → Privacy & Security → Accessibility → turn on AeroSpace. Without it, the window keys do nothing.
-   2. **Optional macOS changes:** `macos/defaults.sh` hides the Dock and the menu bar (SketchyBar replaces it) and changes Spaces settings. Ask first. The person must log out and in afterwards.
-   3. **Ghostty:** open it once. If the font looks wrong, press Cmd+Shift+, to reload the config.
-   4. **nvim:** open it once. lazy.nvim installs the plugins. Then quit and open it again.
-   5. **Personal only:** 1Password app → Settings → Developer → turn on "Integrate with 1Password CLI" and "Use the SSH agent". When macOS asks if Ghostty can access data from other apps, click Allow.
+   2. **macOS changes:** `macos/defaults.sh` hides the Dock and the menu bar (SketchyBar replaces it) and changes Spaces settings. Ask first. The person must log out and in afterwards. Without it SketchyBar runs but stays invisible, because the macOS menu bar covers it.
+   3. **Bar font:** `brew install --cask font-sf-pro` asks for the password, so the person runs it with the `!` prefix.
+   4. **Ghostty:** open it once. If the font looks wrong, press Cmd+Shift+, to reload the config.
+   5. **nvim:** open it once. lazy.nvim installs the plugins. Then quit and open it again.
+   6. **Personal only:** 1Password app → Settings → Developer → turn on "Integrate with 1Password CLI" and "Use the SSH agent". When macOS asks if Ghostty can access data from other apps, click Allow.
 6. Run `~/.dotfiles/bin/doctor` (personal checks run when the personal links exist). Each FAIL line has a fix. Do the fix, then run `doctor` again until it says "All checks passed." Some checks (AeroSpace running, nvim plugins) pass only after step 5.
 7. Tell the person where to learn the keys:
    - In tmux, the prefix is Ctrl-a. Prefix then `?` opens the cheatsheet (`cheatsheet.md`).

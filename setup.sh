@@ -202,6 +202,22 @@ setup_desktop() {
     brew services start borders &> /dev/null || warn "borders did not start"
     open -a AeroSpace 2> /dev/null || warn "AeroSpace not found"
     open -a Maccy 2> /dev/null || warn "Maccy not found"
+    add_login_item Maccy /Applications/Maccy.app
+}
+
+# Maccy has no setting file for "Launch at login" (it uses SMAppService), so register the login item here.
+add_login_item() {
+    local name="$1" path="$2"
+    [[ -d "$path" ]] || { warn "$name not found at $path — no login item"; return; }
+    if osascript -e 'tell application "System Events" to get the name of every login item' 2> /dev/null | grep -q "$name"; then
+        info "$name starts at login"
+        return
+    fi
+    if osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$path\", hidden:false}" &> /dev/null; then
+        info "$name now starts at login"
+    else
+        warn "Could not add $name to the login items — allow the terminal in System Settings → Privacy & Security → Automation, then open $name → Settings → Launch at login"
+    fi
 }
 
 setup_git_secret_scan() {
@@ -375,7 +391,8 @@ main() {
     echo ""
     echo "Steps only a human can do (AGENTS.md explains each):"
     echo "  1. AeroSpace: System Settings → Privacy & Security → Accessibility → turn on AeroSpace"
-    echo "  2. Optional macOS changes (hidden Dock and menu bar, Spaces): ~/.dotfiles/macos/defaults.sh, then log out and in"
+    echo "  2. macOS changes: ~/.dotfiles/macos/defaults.sh, then log out and in"
+    echo "     Needed for SketchyBar: while the macOS menu bar shows, it covers the bar and you see nothing."
     echo "  3. Ghostty: open it; Cmd+Shift+, reloads the config"
     echo "  4. tmux: start it once; plugins are installed (prefix is Ctrl-a, prefix ? = cheatsheet)"
     echo "  5. nvim: open it once; lazy.nvim installs the plugins"

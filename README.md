@@ -12,7 +12,7 @@ A complete macOS development setup with one green "moss" look everywhere. Clone 
 | Desktop | AeroSpace (tiling windows), SketchyBar, borders, Maccy (clipboard history) |
 | Fonts | IBM Plex Mono (BlexMono Nerd Font), SF Pro, SketchyBar app icons |
 | Claude Code | Rules, own and open-source skills, plugins (Plannotator, mattpocock skills, LSP), Context7 |
-| Own commands | `doctor` (checks the setup), `gitid` (git identity per folder), `devctl` (long-running processes), `skills` (skill library), `pn` (Plannotator in tmux), `recap` (day summary of Claude sessions) |
+| Own commands | `doctor` (checks the setup), `gitid` (git identity per folder — `cheatsheet.md` → "Git identity per folder"), `devctl` (long-running processes), `skills` (skill library), `pn` (Plannotator in tmux), `recap` (day summary of Claude sessions) |
 
 You do not need 1Password, a server or any account for the default setup.
 
@@ -50,11 +50,26 @@ You do not need 1Password, a server or any account for the default setup.
    - **By hand:** run `~/.dotfiles/setup.sh`, do the steps it prints at the end, then run `~/.dotfiles/bin/doctor`.
 5. Do the manual steps:
    1. Turn on AeroSpace in System Settings → Privacy & Security → Accessibility.
-   2. Open Ghostty and nvim one time each.
+   2. Run `~/.dotfiles/macos/defaults.sh`, then log out and log in again. **SketchyBar stays invisible until you do this:** the macOS menu bar covers the bar. The script also hides the Dock and sets the Spaces options AeroSpace needs.
+   3. Install the bar font: `brew install --cask font-sf-pro`. It asks for your password, so `setup.sh` cannot do it.
+   4. Open Ghostty and nvim one time each.
 
 `setup.sh` installs everything in `Brewfile` and links each config listed in `links.tsv`. If a file is already at a link location, the script moves it to `<file>.backup`.
 
-**Optional:** `macos/defaults.sh` hides the Dock and the menu bar, because SketchyBar replaces the menu bar. It also changes the Spaces settings that AeroSpace needs. Log out and in after you run it.
+### If a desktop tool does not start
+
+Run `doctor` first. It names the broken part and prints the fix. The usual ones:
+
+| What you see | Why | Fix |
+|---|---|---|
+| No bar at the top, `pgrep -x sketchybar` finds it | The macOS menu bar is still shown and covers it | `~/.dotfiles/macos/defaults.sh`, then log out and in |
+| No bar, nothing running | The service is stopped | `brew services start sketchybar` |
+| The bar shows but the text looks wrong | SF Pro is missing (it needs your password) | `brew install --cask font-sf-pro` |
+| Maccy does not start after a restart | Maccy keeps "Launch at login" in macOS, not in a config file | `~/.dotfiles/setup.sh` adds the login item. If macOS blocks the terminal, open Maccy → Settings → Launch at login |
+| `Alt` keys do nothing | AeroSpace has no Accessibility permission, or a password field has focus (Secure Input) | Turn on AeroSpace in System Settings → Privacy & Security → Accessibility |
+| No green border on the focused window | The service is stopped | `brew services start borders` |
+
+`setup.sh` starts SketchyBar and borders as `brew services` (they come back after a restart), and adds AeroSpace and Maccy to the macOS login items.
 
 ### Use only some parts
 
