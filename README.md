@@ -9,12 +9,33 @@ A complete macOS development setup with one green "moss" look everywhere. Clone 
 | Terminal | Ghostty, tmux (sessionx, floax, URL picker, Claude session picker), zsh with Oh My Zsh, Starship, atuin, fzf |
 | Editor | Neovim (LazyVim, moss theme, LSP for Go, TypeScript and Python), lazygit |
 | CLI tools | bat, eza, fd, ripgrep, zoxide, direnv, jq, yq, gh, git-delta, gitleaks, shellcheck, uv, Node.js (nvm) |
-| Desktop | AeroSpace (tiling windows), SketchyBar, borders, Maccy (clipboard history), OrbStack |
+| Desktop | AeroSpace (tiling windows), SketchyBar, borders, Maccy (clipboard history) |
 | Fonts | IBM Plex Mono (BlexMono Nerd Font), SF Pro, SketchyBar app icons |
 | Claude Code | Rules, own and open-source skills, plugins (Plannotator, mattpocock skills, LSP), Context7 |
 | Own commands | `doctor` (checks the setup), `gitid` (git identity per folder), `devctl` (long-running processes), `skills` (skill library), `pn` (Plannotator in tmux), `recap` (day summary of Claude sessions) |
 
 You do not need 1Password, a server or any account for the default setup.
+
+## Two setups: default and `--personal`
+
+`setup.sh` has two modes. **Everyone wants the default. Only the repo owner wants `--personal`.**
+
+| | Default — `setup.sh` | Owner — `setup.sh --personal` |
+|---|---|---|
+| Who it is for | anyone who likes this setup | the repo owner, on his own machines |
+| Terminal, editor, shell, CLI tools (`Brewfile`) | yes | yes |
+| Desktop: AeroSpace, SketchyBar, borders, Maccy | yes | yes |
+| Fonts, Claude Code rules and skills | yes | yes |
+| Config links, group `core` in `links.tsv` | yes | yes |
+| Work tools: Go, Kubernetes, Terraform, cloud CLIs, databases (`Brewfile.personal`) | no | yes |
+| Container runtime (OrbStack) | no | yes |
+| 1Password CLI, SSH agent config, `~/.config/dotfiles/personal.env` | no | yes |
+| Git identity per folder (`gitid`), restored from 1Password | no | yes |
+| Config links, group `personal` in `links.tsv` | no | yes |
+
+**The default needs no account.** No 1Password, no server, no sign-in. It installs tools and links configs, nothing else.
+
+`--personal` exists because the owner's machines need private things that cannot live in a public repo: client names, work emails, a Coolify domain, SSH keys. Those are read from 1Password and from `~/.config/dotfiles/personal.env`, neither of which is in git. Running `--personal` without the owner's 1Password account gets you the work tools and nothing else useful, so there is no reason to use it.
 
 ## Install
 
@@ -60,7 +81,8 @@ The rules and skills are written for the repo owner's way of working. Read them 
 
 `setup.sh --personal` adds the repo owner's private parts. Other people do not need it. It uses 1Password:
 - the 1Password CLI and work tools (`Brewfile.personal`)
-- the 1Password vault name, in `~/.config/dotfiles/personal.env` (not in git)
+- a container runtime (OrbStack) — a personal choice rather than part of the setup; swap for Docker Desktop, Colima or Podman
+- the 1Password vault name and the `sensei` Coolify domain, in `~/.config/dotfiles/personal.env` (not in git)
 - the 1Password SSH agent config
 - git identities per folder, restored from 1Password into `~/.config/gitid/` (not in git)
 

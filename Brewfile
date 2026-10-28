@@ -51,6 +51,3 @@ cask "maccy" unless app?("Maccy")
 cask "font-blex-mono-nerd-font"
 cask "font-sketchybar-app-font"
 cask "font-sf-pro" unless font?("SF-Pro-Display-*")
-
-# Containers
-cask "orbstack" unless app?("OrbStack")

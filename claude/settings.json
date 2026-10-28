@@ -1,5 +1,10 @@
 {
   "cleanupPeriodDays": 30,
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "permissions": {
     "allow": [
       "Bash(kubectl get *)",
@@ -116,10 +121,5 @@
   "skipWorkflowUsageWarning": true,
   "theme": "dark-ansi",
   "switchModelsOnFlag": true,
-  "agentPushNotifEnabled": true,
-  "attribution": {
-    "commit": "",
-    "pr": "",
-    "sessionUrl": false
-  }
+  "agentPushNotifEnabled": true
 }

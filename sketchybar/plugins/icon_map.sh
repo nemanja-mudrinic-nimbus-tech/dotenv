@@ -1785,9 +1785,6 @@ function __icon_map() {
    "VSCodium")
         icon_result=":vscodium:"
         ;;
-   "Warp")
-        icon_result=":warp:"
-        ;;
    "Wave")
         icon_result=":waveterm:"
         ;;

@@ -2,7 +2,14 @@
 set -euo pipefail
 
 HOST="${SENSEI_HOST:-sensei}"
-DOMAIN="sensei.internal.nimbus-tech.io"
+[[ -f "$HOME/.config/dotfiles/personal.env" ]] && . "$HOME/.config/dotfiles/personal.env"
+DOMAIN="${SENSEI_DOMAIN:-}"
+if [[ -z "$DOMAIN" ]]; then
+  echo "sensei: SENSEI_DOMAIN is not set." >&2
+  echo "  This command talks to your own Coolify host, so the domain is yours, not the repo's." >&2
+  echo "  Set it once:  echo 'export SENSEI_DOMAIN=\"coolify.example.com\"' >> ~/.config/dotfiles/personal.env" >&2
+  exit 1
+fi
 API="https://coolify.$DOMAIN/api/v1"
 API_ITEM="Coolify sensei API"
 SHARE_PROJECT="quick-shares"
@@ -18,7 +25,7 @@ sensei — Coolify on the sensei VM, without UI clicks
 
   sensei                       fzf menu of the commands below
   sensei ls                    resources in Coolify: name, type, status, URL
-  sensei share [dir]           quick share a folder at https://<name>.sensei.internal.nimbus-tech.io
+  sensei share [dir]           quick share a folder at https://<name>.$SENSEI_DOMAIN
                                (optional basic auth, passwords go to 1Password "sensei share <name>")
   sensei logs [name] [lines]   runtime logs of a resource (default 200 lines)
   sensei restart [name]        restart a resource (needed after nginx.conf/htpasswd changes)

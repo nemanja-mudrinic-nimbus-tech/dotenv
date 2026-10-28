@@ -66,4 +66,7 @@ cask "ngrok"
 cask "android-studio" unless app?("Android Studio")
 cask "drawio" unless app?("draw.io")
 cask "librewolf" unless app?("LibreWolf")
-cask "warp" unless app?("Warp")
+
+# Container runtime — a personal choice, not part of the core dev setup.
+# Swap for Docker Desktop, Colima or Podman if you prefer.
+cask "orbstack" unless app?("OrbStack")

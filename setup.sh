@@ -185,6 +185,11 @@ setup_personal() {
     fi
     # shellcheck source=/dev/null
     . "$env_file"
+    if ! grep -q '^export SENSEI_DOMAIN=' "$env_file"; then
+        local sensei_domain="${SENSEI_DOMAIN:-}"
+        [[ -n "$sensei_domain" ]] || read -r -p "Coolify domain for 'sensei' (blank to skip): " sensei_domain
+        [[ -z "$sensei_domain" ]] || printf 'export SENSEI_DOMAIN="%s"\n' "$sensei_domain" >> "$env_file"
+    fi
     mkdir -p "$HOME/.config/1Password/ssh"
     printf '# Keys the 1Password SSH agent serves (default would be only the Private vault)\n[[ssh-keys]]\nvault = "%s"\n' "$OP_VAULT" > "$HOME/.config/1Password/ssh/agent.toml"
     [[ -f "$HOME/.config/gitid/profiles.tsv" ]] || "$DOTFILES_DIR/bin/gitid" restore || warn "gitid restore failed — sign in to 1Password, then: gitid restore"
