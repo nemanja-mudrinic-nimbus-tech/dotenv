@@ -54,7 +54,7 @@ brew "temporal"
 
 # Utilities
 brew "cocogitto"
-brew "tldr"
+brew "tlrc"  # the tldr client; the old "tldr" formula is gone from Homebrew
 brew "yazi"
 brew "unar"
 brew "poppler"
