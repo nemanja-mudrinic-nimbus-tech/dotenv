@@ -60,11 +60,6 @@ if command -v fzf &> /dev/null; then
   source <(fzf --zsh)
 fi
 
-# zoxide for better cd
-if command -v zoxide &> /dev/null; then
-  eval "$(zoxide init zsh)"
-fi
-
 #### Keybindings ####
 bindkey "$terminfo[kcuu1]" history-substring-search-up
 bindkey "$terminfo[kcud1]" history-substring-search-down
@@ -236,3 +231,6 @@ export PLANNOTATOR_SHARE=disabled
 # Starship draws the prompt (~/.config/starship.toml). atuin owns Ctrl+R; Up arrow stays substring search.
 command -v starship &>/dev/null && eval "$(starship init zsh)"
 command -v atuin &>/dev/null && eval "$(atuin init zsh --disable-up-arrow)"
+
+# zoxide last: it warns when another tool adds a precmd hook after it (starship, atuin)
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"

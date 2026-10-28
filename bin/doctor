@@ -50,6 +50,11 @@ if (( ${#missing[@]} == 0 )); then ok "all links point into ~/.dotfiles"; else f
 
 section "Shell"
 check "zsh is the login shell" "chsh -s /bin/zsh" test "$(dscl . -read "/Users/$USER" UserShell | awk '{print $2}')" = /bin/zsh
+# A removed cask (Docker Desktop, for example) leaves its completion link behind, and compinit then
+# prints "no such file or directory" in every new shell.
+dangling_completions="$(find "$(brew --prefix)/share/zsh/site-functions" -maxdepth 1 -type l ! -exec test -e {} \; -print 2> /dev/null)"
+if [[ -z "$dangling_completions" ]]; then ok "zsh completions all point at a file"
+else fail "dead zsh completion links: $(tr '\n' ' ' <<<"$dangling_completions")" "delete them, then: rm -f ~/.zcompdump*"; fi
 check "Oh My Zsh" "run ~/.dotfiles/setup.sh" test -f "$HOME/.oh-my-zsh/oh-my-zsh.sh"
 for tool in starship atuin fzf zoxide eza bat rg fd lazygit direnv; do
   check "$tool" "brew bundle install --file ~/.dotfiles/Brewfile" command -v "$tool"

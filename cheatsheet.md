@@ -717,6 +717,11 @@ Configs: `~/.dotfiles/aerospace/`, `sketchybar/`, `borders/`, `macos/defaults.sh
 
 History is local only (no atuin account, no sync). Commands with tokens, keys or passwords are filtered and never stored (`~/.dotfiles/atuin/config.toml`).
 
+| Problem in a new shell | Fix |
+|---|---|
+| `compinit: no such file or directory: …/site-functions/_docker` | A removed app left its completion link behind. `doctor` names the dead links. Delete them, then `rm -f ~/.zcompdump*` and open a new shell |
+| `zoxide: detected a possible configuration issue` | `zoxide init` must be the last line of `~/.zshrc`, after Starship and atuin. Inside Claude Code the message can still show, because the harness adds its own hook |
+
 ## Line editing — zsh, Claude Code input, any shell in tmux
 
 The same keys work in zsh and in the Claude Code input. Option works as Alt (Ghostty setting).
