@@ -13,5 +13,14 @@ defaults write com.apple.spaces spans-displays -bool true
 # Group windows by application in Mission Control (AeroSpace recommendation).
 defaults write com.apple.dock expose-group-apps -bool true
 
-# Restart the Dock and the menu bar process so the changes apply.
-killall Dock SystemUIServer
+# Restart the Dock and the menu bar process. This applies the Dock settings at once.
+killall Dock SystemUIServer || true
+
+cat <<'EOF'
+
+Done. Log out and log in now.
+
+macOS reads the menu bar setting at login only, so killall is not enough.
+Until you log in again the macOS menu bar stays on screen and covers SketchyBar.
+The Spaces settings also need the new login.
+EOF

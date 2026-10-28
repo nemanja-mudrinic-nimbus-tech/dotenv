@@ -50,7 +50,7 @@ You do not need 1Password, a server or any account for the default setup.
    - **By hand:** run `~/.dotfiles/setup.sh`, do the steps it prints at the end, then run `~/.dotfiles/bin/doctor`.
 5. Do the manual steps:
    1. Turn on AeroSpace in System Settings → Privacy & Security → Accessibility.
-   2. Run `~/.dotfiles/macos/defaults.sh`, then log out and log in again. **SketchyBar stays invisible until you do this:** the macOS menu bar covers the bar. The script also hides the Dock and sets the Spaces options AeroSpace needs.
+   2. Run `~/.dotfiles/macos/defaults.sh`, then log out and log in again. **SketchyBar stays invisible until you log in again:** macOS reads the menu bar setting at login only, and the menu bar covers the bar. The script also hides the Dock and sets the Spaces options AeroSpace needs.
    3. Install the bar font: `brew install --cask font-sf-pro`. It asks for your password, so `setup.sh` cannot do it.
    4. Open Ghostty and nvim one time each.
 
@@ -62,7 +62,7 @@ Run `doctor` first. It names the broken part and prints the fix. The usual ones:
 
 | What you see | Why | Fix |
 |---|---|---|
-| No bar at the top, `pgrep -x sketchybar` finds it | The macOS menu bar is still shown and covers it | `~/.dotfiles/macos/defaults.sh`, then log out and in |
+| No bar at the top, `pgrep -x sketchybar` finds it | The macOS menu bar is still shown and covers it | `~/.dotfiles/macos/defaults.sh`, then log out and in. `doctor` reads the setting, not the screen, so it says OK before you log in |
 | No bar, nothing running | The service is stopped | `brew services start sketchybar` |
 | The bar shows but the text looks wrong | SF Pro is missing (it needs your password) | `brew install --cask font-sf-pro` |
 | Maccy does not start after a restart | Maccy keeps "Launch at login" in macOS, not in a config file | `~/.dotfiles/setup.sh` adds the login item. If macOS blocks the terminal, open Maccy → Settings → Launch at login |

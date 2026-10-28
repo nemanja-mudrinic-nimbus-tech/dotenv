@@ -46,7 +46,7 @@ A person who cloned the repo can start Claude Code in `~/.dotfiles` and type:
    - An existing file at a link location is moved to `<file>.backup`. Tell the person which files were moved.
 5. Give the person the steps that only a human can do:
    1. **AeroSpace:** System Settings → Privacy & Security → Accessibility → turn on AeroSpace. Without it, the window keys do nothing.
-   2. **macOS changes:** `macos/defaults.sh` hides the Dock and the menu bar (SketchyBar replaces it) and changes Spaces settings. Ask first. The person must log out and in afterwards. Without it SketchyBar runs but stays invisible, because the macOS menu bar covers it.
+   2. **macOS changes:** `macos/defaults.sh` hides the Dock and the menu bar (SketchyBar replaces it) and changes Spaces settings. Ask first. The person must log out and in afterwards: macOS reads the menu bar setting at login only. Until then SketchyBar runs but stays invisible, because the macOS menu bar covers it. The doctor check reads the setting, so it passes before the login.
    3. **Bar font:** `brew install --cask font-sf-pro` asks for the password, so the person runs it with the `!` prefix.
    4. **Ghostty:** open it once. If the font looks wrong, press Cmd+Shift+, to reload the config.
    5. **nvim:** open it once. lazy.nvim installs the plugins. Then quit and open it again.

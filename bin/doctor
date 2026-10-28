@@ -86,7 +86,7 @@ check "borders running" "brew services start borders" pgrep -x borders
 check "Maccy running" "open -a Maccy (Shift+Cmd+C opens it)" pgrep -x Maccy
 check "Maccy starts at login" "run ~/.dotfiles/setup.sh, or Maccy → Settings → Launch at login" \
   bash -c "osascript -e 'tell application \"System Events\" to get the name of every login item' | grep -q Maccy"
-check "macOS menu bar hidden (else it covers SketchyBar)" "run ~/.dotfiles/macos/defaults.sh, then log out and in" \
+check "macOS menu bar set to hide (applies at the next login)" "run ~/.dotfiles/macos/defaults.sh, then log out and in" \
   test "$(defaults read NSGlobalDomain _HIHideMenuBar 2> /dev/null)" = 1
 check "SF Pro font (bar)" "brew install --cask font-sf-pro" font_installed "SF-Pro-Display-*"
 check "app icon font (bar)" "brew install --cask font-sketchybar-app-font" font_installed "sketchybar-app-font*"
