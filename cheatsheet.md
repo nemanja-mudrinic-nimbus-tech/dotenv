@@ -25,7 +25,7 @@ Map of all notes/guides: `vault dev-setup` → index.md. Open anywhere: **`prefi
 | `prefix H/J/K/L` | Resize pane (hold to repeat) |
 | **Drag pane border** | Resize with the mouse (mouse is on) |
 | `prefix Space` | Cycle preset layouts (even-split, main, tiled) |
-| `prefix c` / `prefix ,` | New window / rename window |
+| `prefix c` / `prefix ,` | **New tab** (tmux calls it a window; it shows in the top bar) / rename it. Not a split: `prefix \|` and `prefix -` split panes |
 | `prefix 1..9` | Go to window N |
 | `prefix n / p` | Next / previous window |
 | `prefix z` | Zoom (fullscreen) current pane |
