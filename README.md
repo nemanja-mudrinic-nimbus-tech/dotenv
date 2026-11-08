@@ -87,7 +87,7 @@ Everything for Claude Code is in `claude/`. `setup.sh` links it into `~/.claude`
 |---|---|---|
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | Global rules. Imports `claude/rules/engineering.md` |
 | `claude/settings.json` | `~/.claude/settings.json` | Permissions and hooks (secret scan, `devctl` guard) |
-| `claude/skills/<name>/` | `~/.claude/skills/<name>` | Own skills: frontend, backend, devops, go-idioms, typescript-react, brain, plannotator-tui |
+| `claude/skills/<name>/` | `~/.claude/skills/<name>` | Own skills: frontend, backend, devops, go-idioms, typescript-react, plannotator-tui |
 | `claude/skills-library/<name>/` | `~/.claude/skills/<name>` when active | Open-source skills. `skills ls` lists them, `skills on/off <name>` switches them. `ACTIVE` lists the active ones |
 
 The rules and skills are written for the repo owner's way of working. Read them before you use them, and change what does not fit you.

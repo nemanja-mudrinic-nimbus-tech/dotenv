@@ -45,4 +45,3 @@ Layout per project: `index.md`, `working-notes/`, `concepts/`, `lessons-learned/
 
 ## Code navigation
 - Where a symbol is defined or used: load the `LSP` tool and use it before grep. Then grep/Explore for wider searches.
-- If the project `CLAUDE.md` says `Second brain: on`, use the `brain` skill.

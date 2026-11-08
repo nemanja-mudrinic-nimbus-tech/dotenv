@@ -239,18 +239,10 @@ setup_tmux_plugins() {
 }
 
 # ============================================
-# Dev tooling: graphify, language servers, Claude Code extras
+# Dev tooling: language servers, Claude Code extras
 # ============================================
 setup_dev_tooling() {
-    step "Setting up dev tooling (graphify, language servers, Claude Code)..."
-
-    if command -v uv &> /dev/null; then
-        if uv tool list 2>/dev/null | grep -q '^graphifyy'; then
-            info "graphify already installed"
-        else
-            uv tool install graphifyy || warn "Failed to install graphify"
-        fi
-    fi
+    step "Setting up dev tooling (language servers, Claude Code)..."
 
     if command -v npm &> /dev/null; then
         npm install -g typescript-language-server typescript pyright || warn "Failed to install language servers"
