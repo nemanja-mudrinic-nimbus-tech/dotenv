@@ -634,7 +634,7 @@ Colours are "moss": near-black `#151719`, vivid green `#3fd468`, amber strings, 
 | AeroSpace | `Alt+1`, `Alt+2`, `Alt+H/L` | Workspaces switch, focus moves |
 | SketchyBar | Look at the top of the screen | Floating bar: workspaces with app icons (focused = green), clock, battery, CPU, Claude count |
 | borders | Click another window | Green border moves with focus |
-| Maccy | `Shift+Cmd+C` | Clipboard history |
+| Maccy | `Shift+Cmd+B` | Clipboard history |
 | Claude Code | Start a new session | Amber/sage colours (`dark-ansi`). The input cursor stays blue — Claude draws it itself |
 
 **Secure Input (lock icon at the bottom right).** When a password field has focus (1Password, `sudo`, `op signin` in Ghostty), macOS turns on Secure Input. While it is on, no app can read keys, so AeroSpace's `Alt` shortcuts do nothing and show a warning. Close or leave the password field and the shortcuts work again.
@@ -663,7 +663,7 @@ AeroSpace puts windows in tiles. SketchyBar replaces the macOS menu bar. Borders
 | `Alt+Shift+B` | Open Dia |
 | `Alt+Shift+;` | Service mode (the next key does one thing, then you are back) |
 | Service mode: `R` / `Backspace` / `Esc` | Reset the layout · close all windows except the focused one · reload the config and leave |
-| `Shift+Cmd+C` | Open Maccy (clipboard history) |
+| `Shift+Cmd+B` | Open Maccy (clipboard history) |
 | Maccy: `Enter` / `Option+Enter` | Copy the item / copy and paste it |
 | Maccy: `Cmd+1…9` / `Option+1…9` | Copy / paste the item with that number |
 
