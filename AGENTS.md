@@ -31,7 +31,7 @@ A person who cloned the repo can start Claude Code in `~/.dotfiles` and type:
 |---|---|---|
 | Brewfile: terminal, editor, shell, CLI tools, desktop apps, fonts, OrbStack | yes | yes |
 | Links from `links.tsv` (group `core`) | yes | yes |
-| Oh My Zsh, tmux plugins, Node.js (nvm), language servers, Claude Code plugins and MCP | yes | yes |
+| Oh My Zsh, tmux plugins, Node.js (nvm), language servers, playwright-cli, Claude Code plugins and MCP | yes | yes |
 | Desktop start: SketchyBar, borders, AeroSpace, Maccy | yes | yes |
 | Brewfile.personal: 1Password CLI and work tools (Go, Kubernetes, cloud CLIs, databases) | no | yes |
 | Personal settings `~/.config/dotfiles/personal.env` (asks for the 1Password vault), 1Password SSH agent config, sensei skill | no | yes |

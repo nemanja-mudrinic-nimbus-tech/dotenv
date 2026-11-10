@@ -102,6 +102,7 @@ if command -v claude &> /dev/null; then
 else
   fail "claude installed" "curl -fsSL https://claude.ai/install.sh | bash, then run setup.sh again"
 fi
+check "playwright-cli (browser for Claude and factory QA)" "run ~/.dotfiles/setup.sh (setup_dev_tooling)" command -v playwright-cli
 check "gitleaks pre-commit hook in ~/.dotfiles" "run ~/.dotfiles/setup.sh" grep -q gitleaks "$DOTFILES/.git/hooks/pre-commit"
 
 section "Personal"

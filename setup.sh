@@ -246,6 +246,11 @@ setup_dev_tooling() {
 
     if command -v npm &> /dev/null; then
         npm install -g typescript-language-server typescript pyright || warn "Failed to install language servers"
+        # Own prefix, not the nvm global folder: that folder changes with each Node version, and the factory's manual-qa needs a fixed path.
+        npm install -g --prefix "$HOME/.local/share/playwright-cli" @playwright/cli@0.1.22 \
+            && mkdir -p "$HOME/.local/bin" \
+            && ln -sf "$HOME/.local/share/playwright-cli/bin/playwright-cli" "$HOME/.local/bin/playwright-cli" \
+            || warn "Failed to install playwright-cli"
     else
         warn "npm not found — install node via nvm, then re-run for TS/Python language servers"
     fi
