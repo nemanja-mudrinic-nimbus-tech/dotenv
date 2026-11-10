@@ -99,11 +99,12 @@ if command -v eza &> /dev/null; then
   alias lta='lt -a'
 fi
 
-if command -v bat &> /dev/null; then
+# Claude Code (CLAUDECODE=1) gets the plain commands: agents expect grep and cat, and z in a non-interactive shell prints the zoxide doctor warning.
+if [[ -z $CLAUDECODE ]] && command -v bat &> /dev/null; then
   alias cat='bat'
 fi
 
-if command -v zoxide &> /dev/null; then
+if [[ -z $CLAUDECODE ]] && command -v zoxide &> /dev/null; then
   alias cd='z'
 fi
 
@@ -111,7 +112,7 @@ if command -v nvim &> /dev/null; then
   alias vim='nvim'
 fi
 
-if command -v rg &> /dev/null; then
+if [[ -z $CLAUDECODE ]] && command -v rg &> /dev/null; then
   alias grep='rg'
 fi
 
