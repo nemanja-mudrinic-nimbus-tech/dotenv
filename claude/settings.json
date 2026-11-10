@@ -35,9 +35,6 @@
       "Bash(gh issue list *)",
       "Read(~/.dotfiles/claude/skills/**)",
       "Read(~/.claude/skills/**)",
-      "Read(~/vault/projects/*/index.md)",
-      "Read(~/vault/projects/*/working-notes/**)",
-      "Read(~/vault/projects/*/concepts/**)",
       "Read(~/.claude/plans/**)",
       "Bash(~/.dotfiles/bin/pn self)",
       "Bash(~/.dotfiles/bin/pn self)"
@@ -61,14 +58,6 @@
           {
             "type": "command",
             "command": "~/.dotfiles/bin/devctl hook-session-end"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "git -C \"$HOME/vault\" add -A >/dev/null 2>&1 && git -C \"$HOME/vault\" commit -qm \"auto: session end\" >/dev/null 2>&1; exit 0"
           }
         ]
       }

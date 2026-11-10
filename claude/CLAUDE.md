@@ -26,22 +26,5 @@ Area skills (`frontend`, `backend`, `devops`) and tech skills (`go-idioms`, `typ
 - Never `--no-verify` unless asked. Prefer new commits over `--amend`.
 - No `Co-Authored-By`, session links or other attribution lines in commits or PRs.
 
-## Vault — `~/vault` (markdown, edited in nvim)
-Persistent memory across sessions. Access with Read/Write/Edit/Glob/Grep on absolute paths — no filesystem MCP.
-Layout per project: `index.md`, `working-notes/`, `concepts/`, `lessons-learned/`, `sensitive/`. New project setup: `~/vault/backfill/index.md`.
-
-**Reading — only what the task needs:**
-- First substantive turn: if the engagement root's `CLAUDE.md` names a slug, read only `~/vault/projects/<slug>/index.md`. No slug → ask in one line (which / none / new).
-- Open other notes only when the index points to one relevant to the current task. Never bulk-read the vault.
-- `sensitive/` only when the task needs a specific ID or endpoint.
-
-**Writing — paused until the vault decision (2026-10-25): do not create new vault notes; only fix existing ones.** When writing resumes, only these, never session chatter:
-- A decision was made and its *why* would be lost → `working-notes/` (or update the existing note).
-- A non-obvious problem was solved (took real digging, will bite again) → `lessons-learned/<domain>.md`.
-- You learned how a system actually works, beyond what the code shows → `concepts/`.
-- The user asks to save something, or the output is long-form (plan, design, postmortem, >~30 lines) → a file, and reply with a pointer plus the conclusion.
-- Update an existing note before creating a new one. Keep `index.md` a short map (links, not content). Mention in the reply which vault file you wrote.
-- `sensitive/` is gitignored — never paste its contents into commits, PRs, or logs.
-
 ## Code navigation
 - Where a symbol is defined or used: load the `LSP` tool and use it before grep. Then grep/Explore for wider searches.
