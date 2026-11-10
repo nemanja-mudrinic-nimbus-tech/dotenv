@@ -628,6 +628,7 @@ Colours are "moss": near-black `#151719`, vivid green `#3fd468`, amber strings, 
 | floax | `prefix F` twice | Floating shell opens, then hides |
 | URL picker | `prefix Ctrl+u` in a pane with a link | List of links; `Enter` opens it |
 | Claude sessions | `prefix a` | Aligned rows, `~` paths, `●` = running |
+| Factory inbox | `prefix f` | Tasks that wait for you; enter = card, ctrl-a accept, ctrl-r rework, ctrl-t retry, ctrl-p pr, ctrl-x close, ctrl-o open PR, ctrl-e evidence, ctrl-d older done |
 | lazygit | `prefix g` | Green active border |
 | nvim | Open a `.go` or `.py` file | Keywords green, functions teal, types purple, strings amber, NORMAL block green |
 | nvim focus | `Space s v` | The focused split is lighter than the other one |
