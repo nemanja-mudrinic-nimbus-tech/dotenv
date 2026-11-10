@@ -91,7 +91,7 @@ alias db="nvim -c enew -c 'Sqmeow toggle'"
 alias dbadd="nvim -c enew -c 'Sqmeow add'"
 
 # Modern replacements (if installed)
-if command -v eza &> /dev/null; then
+if [[ -z $CLAUDECODE ]] && command -v eza &> /dev/null; then
   alias ls='eza --group-directories-first --icons=auto --sort=extension'
   alias ll='eza -lh --no-user --group-directories-first --icons=auto --sort=extension'
   alias la='ll -a'
