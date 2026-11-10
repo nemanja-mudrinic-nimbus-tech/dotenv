@@ -23,6 +23,8 @@ brew "thefuck"
 
 # CLI tools
 brew "fzf"
+brew "glow"               # factory inbox: markdown preview of cards
+brew "terminal-notifier"  # factory: a click on a notification opens the task link
 brew "fd"
 brew "bat"
 brew "eza"
